@@ -24,17 +24,17 @@
 </head>
 <body>
   <h1>Interactive Supply & Demand Demo</h1>
-  <p class="muted">Move the sliders to shift curves, change how steep or flat they are, and watch equilibrium update. Use the price line to test ceilings and floors.</p>
+  <p class="muted">Shift demand and supply, change steepness all the way to perfectly inelastic (vertical) or perfectly elastic (horizontal), and add a price line to visualize ceilings/floors and shortages/surpluses.</p>
 
   <div class="row">
     <div class="controls">
 
-      <label>Demand shift (right = higher demand)</label>
-      <input id="dIntercept" type="range" min="-8" max="8" step="0.5" value="0">
+      <label>Demand shift (right for normal demand, up/down if perfectly elastic)</label>
+      <input id="dShift" type="range" min="-8" max="8" step="0.5" value="0">
       <div class="tiny"><span class="pill" id="dShiftTag">0.0</span></div>
 
-      <label>Supply shift (right = higher supply)</label>
-      <input id="sIntercept" type="range" min="-8" max="8" step="0.5" value="0">
+      <label>Supply shift (right for normal supply, up/down if perfectly elastic)</label>
+      <input id="sShift" type="range" min="-8" max="8" step="0.5" value="0">
       <div class="tiny"><span class="pill" id="sShiftTag">0.0</span></div>
 
       <label>Demand steepness (0 = perfectly inelastic, 100 = perfectly elastic)</label>
@@ -66,9 +66,9 @@
       </div>
 
       <p class="muted">
-        Notes for students:
-        <br>• Perfectly inelastic means quantity does not change when price changes (vertical curve).
-        <br>• Perfectly elastic means price does not change when quantity changes (horizontal curve).
+        Quick interpretation:
+        <br>• Inelastic (0) = vertical curve (Q doesn’t respond to price)
+        <br>• Elastic (100) = horizontal curve (P doesn’t respond to quantity)
       </p>
     </div>
 
@@ -76,21 +76,11 @@
   </div>
 
   <script>
-    // Linear supply & demand with extreme steepness options.
-    // Demand: Qd = Ad - Bd*P
-    // Supply: Qs = As + Bs*P
-    //
-    // In P vs Q space:
-    // - Bd = 0 => Qd constant => vertical demand (perfectly inelastic)
-    // - Bd very large => P barely changes with Q => near horizontal (perfectly elastic)
-    //
-    // Same idea for supply via Bs.
-
     const canvas = document.getElementById('chart');
     const ctx = canvas.getContext('2d');
 
-    const dInterceptEl = document.getElementById('dIntercept');
-    const sInterceptEl = document.getElementById('sIntercept');
+    const dShiftEl = document.getElementById('dShift');
+    const sShiftEl = document.getElementById('sShift');
     const dSteepEl = document.getElementById('dSteep');
     const sSteepEl = document.getElementById('sSteep');
 
@@ -111,64 +101,83 @@
 
     function clamp(x,a,b){ return Math.min(b, Math.max(a,x)); }
 
-    // Map steepness slider (0..100) to slope coefficient B
-    // 0 => exactly 0 (perfectly inelastic vertical)
+    function isPerfectElastic(v){ return parseFloat(v) >= 100; }
+
+    // Map steepness slider to slope coefficient B:
+    // 0 => 0 (perfectly inelastic vertical)
     // 100 => huge (approx perfectly elastic horizontal)
     function mapSteepToB(v){
       const x = parseFloat(v);
       if(x <= 0) return 0;
       if(x >= 100) return 1e6;
-
-      // Smooth curve: small changes near 0 still visible, but ramps a lot near 100
-      // This makes 100 behave like "infinite" without breaking math.
-      const t = x / 100;                 // 0..1
-      const shaped = Math.pow(t, 3.2);   // emphasize extremes
-      return 0.2 + shaped * 120;         // typical range 0.2..120, then 1e6 at 100
+      const t = x / 100;
+      const shaped = Math.pow(t, 3.2);
+      return 0.2 + shaped * 120;
     }
 
     function draw(){
-      const d0 = parseFloat(dInterceptEl.value);
-      const s0 = parseFloat(sInterceptEl.value);
+      const d0 = parseFloat(dShiftEl.value);
+      const s0 = parseFloat(sShiftEl.value);
+
+      const demandIsFlat = isPerfectElastic(dSteepEl.value);
+      const supplyIsFlat = isPerfectElastic(sSteepEl.value);
 
       const Bd = mapSteepToB(dSteepEl.value);
       const Bs = mapSteepToB(sSteepEl.value);
 
-      // Base intercepts (shifted)
-      const Ad = 56 + d0*4;    // demand intercept
-      const As = 10 + s0*3;    // supply intercept
+      // Base intercept-style shifts for normal (non-flat) curves
+      // Demand: Qd = Ad - Bd*P
+      // Supply: Qs = As + Bs*P
+      const Ad = 56 + d0*4;
+      const As = 10 + s0*3;
 
-      // Solve equilibrium.
-      // If both Bd and Bs are 0, the system is vertical vs vertical and no unique P. We'll handle that.
+      // For perfectly elastic curves, interpret "shift" as up/down in price level:
+      // Demand horizontal line P = Pd_flat (higher shift => higher willingness to pay)
+      // Supply horizontal line P = Ps_flat (higher shift => lower cost => lower price)
+      const Pd_flat = 18 + d0*1.2;
+      const Ps_flat = 10 - s0*1.0;
+
+      // Solve equilibrium in a way that respects vertical/horizontal special cases
       let P_eq = NaN;
       let Q_eq = NaN;
 
-      if(Bd === 0 && Bs === 0){
-        // Both perfectly inelastic: quantities are fixed (Qd=Ad, Qs=As). No single market-clearing price.
-        // We'll show "—" for P and pick Q where they "meet" conceptually (average) just for plotting a point.
+      if(demandIsFlat && supplyIsFlat){
+        if(Math.abs(Pd_flat - Ps_flat) < 1e-6){
+          P_eq = Pd_flat;
+          Q_eq = 50; // display point only
+        } else {
+          P_eq = NaN;
+          Q_eq = NaN;
+        }
+      } else if(demandIsFlat){
+        P_eq = Pd_flat;
+        Q_eq = (Bs === 0) ? As : (As + Bs * P_eq);
+      } else if(supplyIsFlat){
+        P_eq = Ps_flat;
+        Q_eq = (Bd === 0) ? Ad : (Ad - Bd * P_eq);
+      } else if(Bd === 0 && Bs === 0){
+        P_eq = NaN;
         Q_eq = (Ad + As) / 2;
       } else {
-        // Ad - Bd*P = As + Bs*P  => P*(Bd+Bs) = Ad - As
         P_eq = (Ad - As) / (Bd + Bs);
-        Q_eq = Ad - Bd*P_eq;
+        Q_eq = Ad - Bd * P_eq;
       }
 
-      // Display equilibrium values
+      // UI values
       peqEl.textContent = Number.isFinite(P_eq) ? P_eq.toFixed(2) : '—';
       qeqEl.textContent = Number.isFinite(Q_eq) ? Q_eq.toFixed(2) : '—';
 
-      // Chart scaling
+      // Chart bounds
       const pad = 60;
       const w = canvas.width - pad*2;
       const h = canvas.height - pad*2;
 
-      // Choose reasonable plot bounds
-      const qtyMax = clamp(Math.max(70, Ad*1.15, (As + 30)), 70, 140);
-      let priceMax = 40;
+      const qtyMax = clamp(Math.max(70, Ad*1.15, (As + 30)), 70, 160);
 
-      // if equilibrium price is finite and positive, use it to scale nicely
-      if(Number.isFinite(P_eq) && P_eq > 0){
-        priceMax = clamp(P_eq * 1.8, 20, 60);
-      }
+      let priceMax = 40;
+      if(Number.isFinite(P_eq) && P_eq > 0) priceMax = clamp(P_eq * 1.8, 20, 60);
+      // also ensure flat-line levels are visible
+      priceMax = Math.max(priceMax, Pd_flat + 8, Ps_flat + 8);
 
       function xFromQ(q){ return pad + (q/qtyMax)*w; }
       function yFromP(p){ return pad + h - (p/priceMax)*h; }
@@ -180,8 +189,8 @@
       ctx.strokeStyle = '#222';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(pad, pad+h); ctx.lineTo(pad+w, pad+h); // x axis
-      ctx.moveTo(pad, pad);   ctx.lineTo(pad, pad+h+6); // y axis
+      ctx.moveTo(pad, pad+h); ctx.lineTo(pad+w, pad+h);
+      ctx.moveTo(pad, pad);   ctx.lineTo(pad, pad+h+6);
       ctx.stroke();
 
       // Axis labels
@@ -194,7 +203,7 @@
       ctx.fillText('Price', 0, 0);
       ctx.restore();
 
-      // Helper: draw a curve by parameterizing over price
+      // Helper to draw curve by parameterizing over price
       function drawCurve(getQ, strokeStyle){
         ctx.strokeStyle = strokeStyle;
         ctx.lineWidth = 3;
@@ -210,9 +219,16 @@
         ctx.stroke();
       }
 
-      // Demand: Qd = Ad - Bd*P
-      // If Bd=0 => vertical line at Q=Ad (draw as vertical)
-      if(Bd === 0){
+      // Draw Demand
+      if(demandIsFlat){
+        ctx.strokeStyle = '#d64545';
+        ctx.lineWidth = 3;
+        const y = yFromP(Pd_flat);
+        ctx.beginPath();
+        ctx.moveTo(pad, y);
+        ctx.lineTo(pad+w, y);
+        ctx.stroke();
+      } else if(Bd === 0){
         ctx.strokeStyle = '#d64545';
         ctx.lineWidth = 3;
         const x = xFromQ(clamp(Ad, 0, qtyMax));
@@ -224,9 +240,16 @@
         drawCurve((P)=> (Ad - Bd*P), '#d64545');
       }
 
-      // Supply: Qs = As + Bs*P
-      // If Bs=0 => vertical line at Q=As
-      if(Bs === 0){
+      // Draw Supply
+      if(supplyIsFlat){
+        ctx.strokeStyle = '#2a9d8f';
+        ctx.lineWidth = 3;
+        const y = yFromP(Ps_flat);
+        ctx.beginPath();
+        ctx.moveTo(pad, y);
+        ctx.lineTo(pad+w, y);
+        ctx.stroke();
+      } else if(Bs === 0){
         ctx.strokeStyle = '#2a9d8f';
         ctx.lineWidth = 3;
         const x = xFromQ(clamp(As, 0, qtyMax));
@@ -244,12 +267,11 @@
       ctx.fillStyle='#2a9d8f'; ctx.fillRect(canvas.width-150, pad+12, 12, 8);
       ctx.fillStyle='#333'; ctx.fillText('Supply', canvas.width-132, pad+20);
 
-      // Equilibrium marker + dotted tracking lines (if meaningful)
+      // Equilibrium marker + dotted tracking lines
       if(Number.isFinite(P_eq) && Number.isFinite(Q_eq)){
         const xe = xFromQ(Q_eq);
         const ye = yFromP(P_eq);
 
-        // dotted lines
         ctx.save();
         ctx.setLineDash([4,4]);
         ctx.strokeStyle='rgba(0,0,0,0.18)';
@@ -265,25 +287,47 @@
         ctx.font = '13px system-ui';
         ctx.fillText('E', xe+8, ye-8);
 
-        // tiny ticks
         ctx.fillStyle='#555'; ctx.font='11px system-ui';
         ctx.fillText(P_eq.toFixed(2), pad-50, ye+4);
         ctx.fillText(Q_eq.toFixed(2), xe-12, pad+h+18);
-      } else {
-        // No unique equilibrium price
-        pcResult.textContent = 'Equilibrium price is undefined when both curves are perfectly inelastic.';
       }
 
-      // Price control line
+      // Price line controls
       const pcP = parseFloat(pcPrice.value);
       pcPriceTag.textContent = 'P = ' + pcP.toFixed(2);
 
       const mode = pcCeiling.checked ? 'ceiling' : (pcFloor.checked ? 'floor' : 'none');
 
+      // Compute Qd and Qs at the control price
+      // For flat demand/supply, interpret as "available any quantity at that price" with a simple step:
+      // demand: if price <= Pd_flat => huge QD, else ~0
+      // supply: if price >= Ps_flat => huge QS, else ~0
+      let Qd_at;
+      if(demandIsFlat){
+        Qd_at = (pcP <= Pd_flat) ? qtyMax : 0;
+      } else if(Bd === 0){
+        Qd_at = Ad;
+      } else {
+        Qd_at = Ad - Bd*pcP;
+      }
+
+      let Qs_at;
+      if(supplyIsFlat){
+        Qs_at = (pcP >= Ps_flat) ? qtyMax : 0;
+      } else if(Bs === 0){
+        Qs_at = As;
+      } else {
+        Qs_at = As + Bs*pcP;
+      }
+
+      Qd_at = clamp(Qd_at, 0, qtyMax);
+      Qs_at = clamp(Qs_at, 0, qtyMax);
+
+      // Draw price line + intersection points + shortage/surplus bracket if binding
       if(mode !== 'none'){
         const yLine = yFromP(pcP);
 
-        // draw line with different color
+        // price line
         ctx.save();
         ctx.setLineDash([6,6]);
         ctx.lineWidth = 2;
@@ -293,38 +337,95 @@
         ctx.lineTo(pad+w, yLine);
         ctx.stroke();
         ctx.restore();
+
+        // intersection points
+        const xQD = xFromQ(Qd_at);
+        const xQS = xFromQ(Qs_at);
+
+        ctx.save();
+
+        // dots on the price line
+        ctx.fillStyle = '#d64545';
+        ctx.beginPath(); ctx.arc(xQD, yLine, 5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#2a9d8f';
+        ctx.beginPath(); ctx.arc(xQS, yLine, 5, 0, Math.PI*2); ctx.fill();
+
+        // dotted drop lines to axis
+        ctx.setLineDash([4,4]);
+        ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(xQD, pad+h); ctx.lineTo(xQD, yLine);
+        ctx.moveTo(xQS, pad+h); ctx.lineTo(xQS, yLine);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // binding + bracket label (only if equilibrium exists)
+        if(Number.isFinite(P_eq)){
+          const binding = (mode === 'ceiling') ? (pcP < P_eq) : (pcP > P_eq);
+
+          if(binding){
+            const left = Math.min(xQD, xQS);
+            const right = Math.max(xQD, xQS);
+
+            let label = '';
+            if(mode === 'ceiling'){
+              const shortage = Math.max(0, Qd_at - Qs_at);
+              label = `Shortage ≈ ${shortage.toFixed(2)}`;
+            } else {
+              const surplus = Math.max(0, Qs_at - Qd_at);
+              label = `Surplus ≈ ${surplus.toFixed(2)}`;
+            }
+
+            ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(left, yLine - 14); ctx.lineTo(right, yLine - 14);
+            ctx.moveTo(left, yLine - 20); ctx.lineTo(left, yLine - 8);
+            ctx.moveTo(right, yLine - 20); ctx.lineTo(right, yLine - 8);
+            ctx.stroke();
+
+            ctx.fillStyle = '#333';
+            ctx.font = '12px system-ui';
+            ctx.fillText(label, left + 6, yLine - 20);
+          }
+        }
+
+        ctx.restore();
       }
 
-      // Binding logic (only if equilibrium exists)
-      if(Number.isFinite(P_eq) && Number.isFinite(Q_eq)){
+      // Price control result text
+      if(!Number.isFinite(P_eq) || !Number.isFinite(Q_eq)){
+        if(mode === 'none'){
+          pcResult.textContent = 'None';
+        } else {
+          pcResult.textContent = 'Equilibrium is not unique/defined in this extreme configuration, but you can still see QD and QS at the chosen price line.';
+        }
+      } else {
         if(mode === 'none'){
           pcResult.textContent = 'None';
         } else {
           const binding = (mode === 'ceiling') ? (pcP < P_eq) : (pcP > P_eq);
 
-          // Compute Qd and Qs at the control price
-          const Qd_at = Ad - Bd*pcP;  // if Bd=0, this is Ad
-          const Qs_at = As + Bs*pcP;  // if Bs=0, this is As
-
           if(!binding){
             pcResult.textContent = (mode === 'ceiling')
-              ? `Ceiling is non-binding. Market stays at equilibrium.`
-              : `Floor is non-binding. Market stays at equilibrium.`;
+              ? 'Ceiling is non-binding. Market stays at equilibrium.'
+              : 'Floor is non-binding. Market stays at equilibrium.';
           } else {
             if(mode === 'ceiling'){
               const shortage = Math.max(0, Qd_at - Qs_at);
               const traded = Qs_at;
-              pcResult.textContent = `Binding ceiling. Shortage ≈ ${shortage.toFixed(2)}. Quantity traded limited by supply ≈ ${traded.toFixed(2)}.`;
+              pcResult.textContent = `Binding ceiling. Quantity traded limited by supply ≈ ${traded.toFixed(2)}. Shortage ≈ ${shortage.toFixed(2)}.`;
             } else {
               const surplus = Math.max(0, Qs_at - Qd_at);
               const traded = Qd_at;
-              pcResult.textContent = `Binding floor. Surplus ≈ ${surplus.toFixed(2)}. Quantity traded limited by demand ≈ ${traded.toFixed(2)}.`;
+              pcResult.textContent = `Binding floor. Quantity traded limited by demand ≈ ${traded.toFixed(2)}. Surplus ≈ ${surplus.toFixed(2)}.`;
             }
           }
         }
       }
 
-      // UI tags for shifts + steepness
+      // Slider tags
       dShiftTag.textContent = d0.toFixed(1);
       sShiftTag.textContent = s0.toFixed(1);
       dSteepTag.textContent = dSteepEl.value;
@@ -332,7 +433,7 @@
     }
 
     // Events
-    [dInterceptEl, sInterceptEl, dSteepEl, sSteepEl, pcPrice, pcNone, pcCeiling, pcFloor].forEach(el=>{
+    [dShiftEl, sShiftEl, dSteepEl, sSteepEl, pcPrice, pcNone, pcCeiling, pcFloor].forEach(el=>{
       el.addEventListener('input', draw);
       el.addEventListener('change', draw);
     });
