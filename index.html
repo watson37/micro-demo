@@ -3,31 +3,67 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Interactive Supply & Demand Demo</title>
+  <title>Interactive Supply & Demand Demo + Scenario Practice</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:18px;color:#111}
-    h1{font-size:20px;margin-bottom:6px}
-    .row{display:flex;gap:18px;align-items:flex-start}
-    .controls{width:340px}
+    h1{font-size:20px;margin:0 0 6px}
+    .muted{color:#666;font-size:13px;line-height:1.35;margin:6px 0 0}
+    .row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+    .controls{width:360px;min-width:300px}
     label{display:block;margin:10px 0 6px;font-weight:600}
     input[type=range]{width:100%}
     canvas{background:#fbfbfb;border:1px solid #e6e6e6;border-radius:8px}
     .info{margin-top:12px}
     .stat{margin:6px 0}
-    .muted{color:#666;font-size:13px;line-height:1.35}
     .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #e6e6e6;background:#fff;font-size:12px;color:#444}
     .divider{margin:12px 0;border-top:1px solid #eee}
     .pcRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
     .pcRow label{margin:0;font-weight:600}
-    .tiny{font-size:12px;color:#666}
+    .tiny{font-size:12px;color:#666;line-height:1.35}
+    .btnRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+    button{appearance:none;border:1px solid #d7d7d7;background:#fff;color:#111;padding:8px 10px;border-radius:10px;font-weight:650;cursor:pointer}
+    button.primary{background:#0366d6;color:#fff;border-color:#0366d6}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .card{border:1px solid #e6e6e6;border-radius:12px;background:#fff;padding:12px}
+    .cardTitle{font-weight:800;margin:0 0 8px}
+    .grid2{display:grid;grid-template-columns:1fr;gap:10px}
+    select{border-radius:10px;border:1px solid #d7d7d7;background:#fff;color:#111;padding:6px 8px;font-size:13px}
+    .toggleRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .good{color:#127a3a}
+    .warn{color:#8a5b00}
+    .bad{color:#a3122a}
+    .feedback{margin-top:10px;padding:10px;border-radius:12px;background:#fbfbfb;border:1px solid #eee}
+    .feedback b{color:#111}
+    .kbd{display:inline-block;padding:2px 6px;border:1px solid #e6e6e6;border-radius:8px;background:#fff;font-size:12px}
+    .hr{margin:10px 0;border-top:1px solid #eee}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace}
   </style>
 </head>
 <body>
   <h1>Interactive Supply & Demand Demo</h1>
-  <p class="muted">Shift demand and supply, change steepness all the way to perfectly inelastic (vertical) or perfectly elastic (horizontal), and add a price line to visualize ceilings/floors and shortages/surpluses.</p>
+  <p class="muted">
+    Free-range mode: play with shifts, steepness, and price controls.
+    <br>Practice mode: load a scenario, then try to recreate the predicted outcome and check your work.
+  </p>
 
   <div class="row">
     <div class="controls">
+
+      <div class="card">
+        <div class="toggleRow">
+          <label style="margin:0;font-weight:800">Mode</label>
+          <label class="tiny" style="display:flex;gap:8px;align-items:center;margin:0">
+            <input id="practiceToggle" type="checkbox" />
+            Practice Mode
+          </label>
+          <span class="pill" id="modePill">Free-range play</span>
+        </div>
+        <div class="tiny" style="margin-top:8px">
+          Tip: In class, you can demo in free-range, then flip on Practice Mode and let them run scenarios.
+        </div>
+      </div>
+
+      <div class="divider"></div>
 
       <label>Demand shift (right for normal demand, up/down if perfectly elastic)</label>
       <input id="dShift" type="range" min="-8" max="8" step="0.5" value="0">
@@ -65,20 +101,86 @@
         <div class="stat"><strong>Price control result:</strong> <span id="pcResult">None</span></div>
       </div>
 
+      <div class="divider"></div>
+
+      <div class="card" id="scenarioCard" style="opacity:.55">
+        <div class="cardTitle">Scenario Practice</div>
+
+        <div class="grid2">
+          <div class="toggleRow">
+            <label class="tiny" style="margin:0">Scenario</label>
+            <select id="scenarioSelect" style="flex:1"></select>
+            <button id="randomBtn" title="Pick a random scenario">Random</button>
+          </div>
+
+          <div class="toggleRow">
+            <label class="tiny" style="margin:0">Difficulty</label>
+            <select id="difficulty" style="flex:1">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+
+            <label class="tiny" style="display:flex;gap:8px;align-items:center;margin:0">
+              <input id="hintToggle" type="checkbox" />
+              Show hint
+            </label>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="tiny"><b>Prompt</b></div>
+          <div id="scenarioPrompt" class="tiny" style="min-height:48px;color:#333">Turn on Practice Mode to load a scenario.</div>
+
+          <div id="scenarioHint" class="tiny" style="display:none">
+            <div class="hr"></div>
+            <b>Hint</b>
+            <div id="hintText" style="margin-top:6px"></div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="tiny"><b>Your task</b></div>
+          <div id="scenarioTask" class="tiny" style="color:#333;min-height:44px">
+            Pick a scenario, then click <span class="kbd">Start Scenario</span>.
+          </div>
+
+          <div class="btnRow">
+            <button id="startScenario" class="primary">Start Scenario</button>
+            <button id="resetToScenario">Reset to scenario baseline</button>
+            <button id="checkAnswer">Check my work</button>
+          </div>
+
+          <div class="feedback" id="feedbackBox" style="display:none">
+            <div id="feedbackText" class="tiny"></div>
+          </div>
+
+          <div class="tiny" style="margin-top:8px">
+            Scoring is direction-based, not “exact numbers,” so students do not get punished for tiny slider differences.
+          </div>
+        </div>
+      </div>
+
       <p class="muted">
         Quick interpretation:
-        <br>• Inelastic (0) = vertical curve (Q doesn’t respond to price)
-        <br>• Elastic (100) = horizontal curve (P doesn’t respond to quantity)
+        <br>• Inelastic (0) = vertical curve (Q does not respond to price)
+        <br>• Elastic (100) = horizontal curve (P does not respond to quantity)
       </p>
+
     </div>
 
-    <canvas id="chart" width="720" height="480"></canvas>
+    <div>
+      <canvas id="chart" width="720" height="480"></canvas>
+      <div class="tiny" style="margin-top:8px">
+        Dots on price line: <span class="pill" style="border-color:#f0caca;color:#d64545">QD @ Pc</span>
+        and <span class="pill" style="border-color:#bfe5df;color:#2a9d8f">QS @ Pc</span>.
+        If binding, the bracket shows shortage or surplus.
+      </div>
+    </div>
   </div>
 
   <script>
-    const canvas = document.getElementById('chart');
-    const ctx = canvas.getContext('2d');
-
+    // ---------- UI ----------
     const dShiftEl = document.getElementById('dShift');
     const sShiftEl = document.getElementById('sShift');
     const dSteepEl = document.getElementById('dSteep');
@@ -91,15 +193,44 @@
 
     const peqEl = document.getElementById('peq');
     const qeqEl = document.getElementById('qeq');
+    const pcResult = document.getElementById('pcResult');
 
     const pcNone = document.getElementById('pcNone');
     const pcCeiling = document.getElementById('pcCeiling');
     const pcFloor = document.getElementById('pcFloor');
     const pcPrice = document.getElementById('pcPrice');
     const pcPriceTag = document.getElementById('pcPriceTag');
-    const pcResult = document.getElementById('pcResult');
+
+    const practiceToggle = document.getElementById('practiceToggle');
+    const modePill = document.getElementById('modePill');
+    const scenarioCard = document.getElementById('scenarioCard');
+
+    const scenarioSelect = document.getElementById('scenarioSelect');
+    const difficultyEl = document.getElementById('difficulty');
+    const hintToggle = document.getElementById('hintToggle');
+    const scenarioPrompt = document.getElementById('scenarioPrompt');
+    const scenarioTask = document.getElementById('scenarioTask');
+    const scenarioHint = document.getElementById('scenarioHint');
+    const hintText = document.getElementById('hintText');
+
+    const startScenarioBtn = document.getElementById('startScenario');
+    const resetToScenarioBtn = document.getElementById('resetToScenario');
+    const checkAnswerBtn = document.getElementById('checkAnswer');
+    const randomBtn = document.getElementById('randomBtn');
+
+    const feedbackBox = document.getElementById('feedbackBox');
+    const feedbackText = document.getElementById('feedbackText');
+
+    // ---------- Canvas ----------
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
 
     function clamp(x,a,b){ return Math.min(b, Math.max(a,x)); }
+    function signDir(x, deadband=0.15){
+      if(x > deadband) return +1;
+      if(x < -deadband) return -1;
+      return 0;
+    }
 
     function isPerfectElastic(v){ return parseFloat(v) >= 100; }
 
@@ -115,7 +246,466 @@
       return 0.2 + shaped * 120;
     }
 
-    function draw(){
+    // ---------- Scenario Engine ----------
+    // Directions: +1 right/up, -1 left/down, 0 no change
+    // For normal curves: shift moves intercept, right/left.
+    // For perfectly elastic (flat) curves: shift moves price level up/down.
+    const scenarios = [
+      {
+        id: "income_up",
+        title: "Income rises (normal good)",
+        prompt: {
+          easy: "Demand increases. Show the new equilibrium.",
+          medium: "Household incomes rise and the good is normal. Predict the new equilibrium.",
+          hard: "Consumer purchasing power strengthens across the economy. What happens in this market?"
+        },
+        hint: "Demand shifts right. Expect P up and Q up.",
+        req: { dShift:+1, sShift:0 },
+        expect: { P:+1, Q:+1 }
+      },
+      {
+        id: "taste_down",
+        title: "Tastes shift away",
+        prompt: {
+          easy: "Demand decreases. Show the new equilibrium.",
+          medium: "Preferences shift away from the product. Predict the new equilibrium.",
+          hard: "The good falls out of fashion and loses mindshare. What happens next?"
+        },
+        hint: "Demand shifts left. Expect P down and Q down.",
+        req: { dShift:-1, sShift:0 },
+        expect: { P:-1, Q:-1 }
+      },
+      {
+        id: "tech_improves",
+        title: "Technology lowers cost",
+        prompt: {
+          easy: "Supply increases. Show the new equilibrium.",
+          medium: "A productivity improvement lowers firms’ costs. Predict the new equilibrium.",
+          hard: "A process innovation reduces marginal cost across producers. What happens in this market?"
+        },
+        hint: "Supply shifts right. Expect P down and Q up.",
+        req: { dShift:0, sShift:+1 },
+        expect: { P:-1, Q:+1 }
+      },
+      {
+        id: "input_cost_up",
+        title: "Input costs rise",
+        prompt: {
+          easy: "Supply decreases. Show the new equilibrium.",
+          medium: "A key input becomes more expensive. Predict the new equilibrium.",
+          hard: "A supply chain disruption raises costs and constrains production. What happens next?"
+        },
+        hint: "Supply shifts left. Expect P up and Q down.",
+        req: { dShift:0, sShift:-1 },
+        expect: { P:+1, Q:-1 }
+      },
+      {
+        id: "boom_and_cost",
+        title: "Demand up, supply down",
+        prompt: {
+          easy: "Demand increases, supply decreases. Show the new equilibrium.",
+          medium: "Demand surges while input costs rise. Predict the new equilibrium.",
+          hard: "The market overheats as buyers pile in while producers face higher costs. What happens?"
+        },
+        hint: "D right and S left. Price almost surely rises. Quantity is ambiguous, watch the model.",
+        req: { dShift:+1, sShift:-1 },
+        expect: { P:+1, Q:0 } // Q is ambiguous, we allow either direction when grading
+      },
+      {
+        id: "ceiling_binding",
+        title: "Binding price ceiling",
+        prompt: {
+          easy: "Add a price ceiling below equilibrium. Show shortage.",
+          medium: "A policy sets a maximum price below equilibrium. Show what happens.",
+          hard: "Officials cap prices to improve affordability. Analyze the shortage risk."
+        },
+        hint: "Set ceiling below equilibrium. Shortage appears: QD > QS at Pc.",
+        req: { dShift:0, sShift:0 },
+        expect: { P:-1, Q:0 },
+        pc: { mode:"ceiling", relation:"binding" }
+      },
+      {
+        id: "floor_binding",
+        title: "Binding price floor",
+        prompt: {
+          easy: "Add a price floor above equilibrium. Show surplus.",
+          medium: "A minimum price is set above equilibrium. Show what happens.",
+          hard: "A wage or price support holds price above market clearing. Analyze the surplus risk."
+        },
+        hint: "Set floor above equilibrium. Surplus appears: QS > QD at Pc.",
+        req: { dShift:0, sShift:0 },
+        expect: { P:+1, Q:0 },
+        pc: { mode:"floor", relation:"binding" }
+      },
+      {
+        id: "ceiling_nonbinding",
+        title: "Non-binding price ceiling",
+        prompt: {
+          easy: "Add a ceiling above equilibrium. It should not change equilibrium.",
+          medium: "A max price is set, but it is above the market clearing price. Analyze.",
+          hard: "A cap is announced, but it sits above current conditions. What changes, if anything?"
+        },
+        hint: "Ceiling above equilibrium is non-binding. Market stays at equilibrium.",
+        req: { dShift:0, sShift:0 },
+        expect: { P:0, Q:0 },
+        pc: { mode:"ceiling", relation:"nonbinding" }
+      },
+      {
+        id: "floor_nonbinding",
+        title: "Non-binding price floor",
+        prompt: {
+          easy: "Add a floor below equilibrium. It should not change equilibrium.",
+          medium: "A minimum price is set below the market clearing price. Analyze.",
+          hard: "A support price exists, but current market conditions sit above it. What happens?"
+        },
+        hint: "Floor below equilibrium is non-binding. Market stays at equilibrium.",
+        req: { dShift:0, sShift:0 },
+        expect: { P:0, Q:0 },
+        pc: { mode:"floor", relation:"nonbinding" }
+      }
+    ];
+
+    // Scenario runtime state
+    let practiceOn = false;
+    let activeScenario = null;
+    let scenarioBaseline = null;   // snapshot of sliders and equilibrium before student acts
+    let scenarioTarget = null;     // for price control target (if any)
+
+    function scenarioById(id){
+      return scenarios.find(s => s.id === id);
+    }
+
+    function populateScenarioSelect(){
+      scenarioSelect.innerHTML = "";
+      for(const s of scenarios){
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = s.title;
+        scenarioSelect.appendChild(opt);
+      }
+      scenarioSelect.value = scenarios[0].id;
+    }
+    populateScenarioSelect();
+
+    function setPracticeUI(on){
+      practiceOn = on;
+      scenarioCard.style.opacity = on ? "1" : ".55";
+      startScenarioBtn.disabled = !on;
+      resetToScenarioBtn.disabled = !on;
+      checkAnswerBtn.disabled = !on;
+
+      modePill.textContent = on ? "Practice Mode" : "Free-range play";
+      modePill.style.borderColor = on ? "#b8d7ff" : "#e6e6e6";
+      modePill.style.background = on ? "#eef6ff" : "#fff";
+      modePill.style.color = on ? "#154a8a" : "#444";
+
+      if(!on){
+        activeScenario = null;
+        scenarioBaseline = null;
+        scenarioTarget = null;
+        feedbackBox.style.display = "none";
+        scenarioPrompt.textContent = "Turn on Practice Mode to load a scenario.";
+        scenarioTask.innerHTML = 'Pick a scenario, then click <span class="kbd">Start Scenario</span>.';
+        scenarioHint.style.display = "none";
+      }else{
+        updateScenarioText();
+      }
+    }
+
+    function updateScenarioText(){
+      const s = scenarioById(scenarioSelect.value);
+      if(!s) return;
+
+      const diff = difficultyEl.value;
+      scenarioPrompt.textContent = s.prompt[diff] || s.prompt.medium || s.prompt.easy;
+
+      if(hintToggle.checked){
+        scenarioHint.style.display = "block";
+        hintText.textContent = s.hint || "";
+      }else{
+        scenarioHint.style.display = "none";
+      }
+
+      if(activeScenario && activeScenario.id === s.id){
+        scenarioTask.innerHTML =
+          `You are in an active scenario. Change the sliders and/or price line, then click <span class="kbd">Check my work</span>.`;
+      }else{
+        scenarioTask.innerHTML =
+          `Click <span class="kbd">Start Scenario</span> to set a baseline, then make your changes and check your work.`;
+      }
+    }
+
+    practiceToggle.addEventListener("change", ()=>{
+      setPracticeUI(practiceToggle.checked);
+      draw();
+    });
+    difficultyEl.addEventListener("change", updateScenarioText);
+    scenarioSelect.addEventListener("change", ()=>{
+      updateScenarioText();
+      feedbackBox.style.display = "none";
+    });
+    hintToggle.addEventListener("change", updateScenarioText);
+
+    randomBtn.addEventListener("click", ()=>{
+      const idx = Math.floor(Math.random() * scenarios.length);
+      scenarioSelect.value = scenarios[idx].id;
+      updateScenarioText();
+      feedbackBox.style.display = "none";
+    });
+
+    function getPcMode(){
+      if(pcCeiling.checked) return "ceiling";
+      if(pcFloor.checked) return "floor";
+      return "none";
+    }
+
+    function setPcMode(mode){
+      if(mode === "ceiling"){ pcCeiling.checked = true; }
+      else if(mode === "floor"){ pcFloor.checked = true; }
+      else { pcNone.checked = true; }
+    }
+
+    function snapshotState(){
+      const eq = computeEquilibrium();
+      return {
+        dShift: parseFloat(dShiftEl.value),
+        sShift: parseFloat(sShiftEl.value),
+        dSteep: parseFloat(dSteepEl.value),
+        sSteep: parseFloat(sSteepEl.value),
+        pcMode: getPcMode(),
+        pcP: parseFloat(pcPrice.value),
+        Peq: eq.P_eq,
+        Qeq: eq.Q_eq,
+        // computed for current configuration
+        demandIsFlat: eq.demandIsFlat,
+        supplyIsFlat: eq.supplyIsFlat
+      };
+    }
+
+    function resetToBaselinePreset(){
+      // Baseline preset for scenarios, keeps things consistent and teachable
+      dShiftEl.value = 0;
+      sShiftEl.value = 0;
+      dSteepEl.value = 55;
+      sSteepEl.value = 45;
+      setPcMode("none");
+      pcPrice.value = 12;
+    }
+
+    function computeScenarioTargets(s, base){
+      // For price control scenarios, we compute a target control price relative to equilibrium.
+      // relation:
+      // - binding ceiling: Pc = Peq - 4
+      // - nonbinding ceiling: Pc = Peq + 4
+      // - binding floor: Pc = Peq + 4
+      // - nonbinding floor: Pc = Peq - 4
+      if(!s.pc) return null;
+      if(!Number.isFinite(base.Peq)) return null;
+
+      let target = base.Peq;
+      if(s.pc.mode === "ceiling"){
+        target = (s.pc.relation === "binding") ? base.Peq - 4 : base.Peq + 4;
+      }else if(s.pc.mode === "floor"){
+        target = (s.pc.relation === "binding") ? base.Peq + 4 : base.Peq - 4;
+      }
+      target = clamp(target, parseFloat(pcPrice.min), parseFloat(pcPrice.max));
+
+      return { mode: s.pc.mode, relation: s.pc.relation, PcTarget: target };
+    }
+
+    startScenarioBtn.addEventListener("click", ()=>{
+      if(!practiceOn) return;
+
+      resetToBaselinePreset();
+      draw();
+
+      activeScenario = scenarioById(scenarioSelect.value);
+      scenarioBaseline = snapshotState();
+      scenarioTarget = computeScenarioTargets(activeScenario, scenarioBaseline);
+
+      // If the scenario is about price controls, gently set the mode for them, but do not set the price.
+      if(activeScenario.pc){
+        setPcMode(activeScenario.pc.mode);
+      }else{
+        setPcMode("none");
+      }
+
+      feedbackBox.style.display = "none";
+      updateScenarioText();
+
+      // Show an explicit task line for price control scenarios
+      if(activeScenario.pc && scenarioTarget && Number.isFinite(scenarioTarget.PcTarget)){
+        const relText = (scenarioTarget.relation === "binding") ? "binding" : "non-binding";
+        scenarioTask.innerHTML =
+          `Task: Set the shifts and steepness as needed, then set a <b>${relText}</b> <b>${scenarioTarget.mode}</b>.
+          Move the price line near <span class="mono">P ≈ ${scenarioTarget.PcTarget.toFixed(2)}</span>, then check your work.`;
+      }else{
+        scenarioTask.innerHTML =
+          `Task: Adjust the curves to match the scenario outcome, then click <span class="kbd">Check my work</span>.`;
+      }
+
+      draw();
+    });
+
+    resetToScenarioBtn.addEventListener("click", ()=>{
+      if(!practiceOn || !scenarioBaseline) {
+        resetToBaselinePreset();
+        draw();
+        return;
+      }
+      // Reset to baseline preset and re-establish scenario baseline from scratch
+      activeScenario = null;
+      scenarioBaseline = null;
+      scenarioTarget = null;
+      feedbackBox.style.display = "none";
+      resetToBaselinePreset();
+      setPcMode("none");
+      draw();
+      updateScenarioText();
+    });
+
+    function gradeDirections(base, cur, s){
+      const msgs = [];
+      let okCount = 0;
+      let total = 0;
+
+      // Curve shifts: compare change in slider values from baseline
+      const dDelta = cur.dShift - base.dShift;
+      const sDelta = cur.sShift - base.sShift;
+
+      // We want a meaningful movement in the right direction
+      function checkShift(name, delta, reqDir){
+        if(reqDir === 0){
+          total += 1;
+          if(Math.abs(delta) <= 0.5){
+            okCount += 1;
+            msgs.push(`<span class="good">✓</span> ${name} shift: stayed roughly the same.`);
+          }else{
+            msgs.push(`<span class="warn">•</span> ${name} shift: moved, but scenario did not require it.`);
+          }
+          return;
+        }
+        total += 1;
+        const dir = signDir(delta, 0.35);
+        if(dir === reqDir){
+          okCount += 1;
+          msgs.push(`<span class="good">✓</span> ${name} shift: correct direction.`);
+        }else if(dir === 0){
+          msgs.push(`<span class="warn">•</span> ${name} shift: not moved enough yet.`);
+        }else{
+          msgs.push(`<span class="bad">✗</span> ${name} shift: wrong direction.`);
+        }
+      }
+
+      checkShift("Demand", dDelta, s.req.dShift);
+      checkShift("Supply", sDelta, s.req.sShift);
+
+      // Equilibrium direction: compare equilibrium change from baseline
+      // Use a deadband so tiny differences do not trigger wrong answers
+      if(Number.isFinite(base.Peq) && Number.isFinite(cur.Peq)){
+        const dP = cur.Peq - base.Peq;
+        const dQ = cur.Qeq - base.Qeq;
+
+        const dirP = signDir(dP, 0.25);
+        const dirQ = signDir(dQ, 0.25);
+
+        // Allow ambiguous outcomes (expect 0 means "not graded strictly")
+        total += 1;
+        if(s.expect.P === 0){
+          okCount += 1;
+          msgs.push(`<span class="good">✓</span> Price direction: not strictly graded for this scenario.`);
+        }else if(dirP === s.expect.P){
+          okCount += 1;
+          msgs.push(`<span class="good">✓</span> Price direction: correct.`);
+        }else{
+          msgs.push(`<span class="bad">✗</span> Price direction: expected ${dirWord(s.expect.P)}, got ${dirWord(dirP)}.`);
+        }
+
+        total += 1;
+        if(s.expect.Q === 0){
+          okCount += 1;
+          msgs.push(`<span class="good">✓</span> Quantity direction: not strictly graded for this scenario (could be ambiguous).`);
+        }else if(dirQ === s.expect.Q){
+          okCount += 1;
+          msgs.push(`<span class="good">✓</span> Quantity direction: correct.`);
+        }else{
+          msgs.push(`<span class="bad">✗</span> Quantity direction: expected ${dirWord(s.expect.Q)}, got ${dirWord(dirQ)}.`);
+        }
+      }else{
+        msgs.push(`<span class="warn">•</span> Equilibrium is not uniquely defined in this extreme configuration, so direction grading is limited.`);
+      }
+
+      // Price control grading (if scenario uses it)
+      if(s.pc && scenarioTarget && Number.isFinite(scenarioTarget.PcTarget) && Number.isFinite(base.Peq)){
+        total += 2;
+
+        const modeOk = (getPcMode() === scenarioTarget.mode);
+        if(modeOk){
+          okCount += 1;
+          msgs.push(`<span class="good">✓</span> Price control type: correct (${scenarioTarget.mode}).`);
+        }else{
+          msgs.push(`<span class="bad">✗</span> Price control type: expected ${scenarioTarget.mode}.`);
+        }
+
+        const pOk = Math.abs(cur.pcP - scenarioTarget.PcTarget) <= 0.75;
+        if(pOk){
+          okCount += 1;
+          msgs.push(`<span class="good">✓</span> Price line level: close enough to the target.`);
+        }else{
+          msgs.push(`<span class="warn">•</span> Price line level: aim closer to P ≈ ${scenarioTarget.PcTarget.toFixed(2)}.`);
+        }
+
+        // Binding check and shortage/surplus note (informational)
+        const binding = (scenarioTarget.mode === "ceiling") ? (cur.pcP < cur.Peq) : (cur.pcP > cur.Peq);
+        const bindWanted = (scenarioTarget.relation === "binding");
+        if(Number.isFinite(cur.Peq)){
+          if(binding === bindWanted){
+            msgs.push(`<span class="good">✓</span> Binding check: ${bindWanted ? "binding" : "non-binding"} looks right.`);
+          }else{
+            msgs.push(`<span class="warn">•</span> Binding check: looks ${binding ? "binding" : "non-binding"}, but the scenario wanted ${bindWanted ? "binding" : "non-binding"}.`);
+          }
+        }
+      }
+
+      const pct = Math.round((okCount / Math.max(1,total)) * 100);
+      return { pct, okCount, total, msgs };
+    }
+
+    function dirWord(d){
+      if(d === 1) return "up";
+      if(d === -1) return "down";
+      return "about the same";
+    }
+
+    checkAnswerBtn.addEventListener("click", ()=>{
+      if(!practiceOn || !activeScenario || !scenarioBaseline){
+        feedbackBox.style.display = "block";
+        feedbackText.innerHTML = `Turn on Practice Mode, click <b>Start Scenario</b>, then try again.`;
+        return;
+      }
+
+      const cur = snapshotState();
+      const result = gradeDirections(scenarioBaseline, cur, activeScenario);
+
+      const vibe = (result.pct >= 85) ? "good" : (result.pct >= 60 ? "warn" : "bad");
+      const vibeLabel = (vibe === "good") ? "Nice work" : (vibe === "warn" ? "Close" : "Keep going");
+
+      feedbackBox.style.display = "block";
+      feedbackText.innerHTML =
+        `<div class="${vibe}"><b>${vibeLabel}.</b> ${result.pct}% checks passed (${result.okCount}/${result.total}).</div>` +
+        `<div style="margin-top:8px;line-height:1.45">${result.msgs.map(m=>`<div>${m}</div>`).join("")}</div>` +
+        `<div class="hr"></div>` +
+        `<div><b>Baseline vs now</b></div>` +
+        `<div class="tiny">Baseline: Peq=${fmtMaybe(scenarioBaseline.Peq)}, Qeq=${fmtMaybe(scenarioBaseline.Qeq)}</div>` +
+        `<div class="tiny">Now: Peq=${fmtMaybe(cur.Peq)}, Qeq=${fmtMaybe(cur.Qeq)}</div>`;
+    });
+
+    function fmtMaybe(x){
+      return Number.isFinite(x) ? x.toFixed(2) : "—";
+    }
+
+    // ---------- Economics + Drawing ----------
+    function computeEquilibrium(){
       const d0 = parseFloat(dShiftEl.value);
       const s0 = parseFloat(sShiftEl.value);
 
@@ -125,26 +715,19 @@
       const Bd = mapSteepToB(dSteepEl.value);
       const Bs = mapSteepToB(sSteepEl.value);
 
-      // Base intercept-style shifts for normal (non-flat) curves
-      // Demand: Qd = Ad - Bd*P
-      // Supply: Qs = As + Bs*P
       const Ad = 56 + d0*4;
       const As = 10 + s0*3;
 
-      // For perfectly elastic curves, interpret "shift" as up/down in price level:
-      // Demand horizontal line P = Pd_flat (higher shift => higher willingness to pay)
-      // Supply horizontal line P = Ps_flat (higher shift => lower cost => lower price)
       const Pd_flat = 18 + d0*1.2;
       const Ps_flat = 10 - s0*1.0;
 
-      // Solve equilibrium in a way that respects vertical/horizontal special cases
       let P_eq = NaN;
       let Q_eq = NaN;
 
       if(demandIsFlat && supplyIsFlat){
         if(Math.abs(Pd_flat - Ps_flat) < 1e-6){
           P_eq = Pd_flat;
-          Q_eq = 50; // display point only
+          Q_eq = 50;
         } else {
           P_eq = NaN;
           Q_eq = NaN;
@@ -163,21 +746,31 @@
         Q_eq = Ad - Bd * P_eq;
       }
 
-      // UI values
-      peqEl.textContent = Number.isFinite(P_eq) ? P_eq.toFixed(2) : '—';
-      qeqEl.textContent = Number.isFinite(Q_eq) ? Q_eq.toFixed(2) : '—';
+      return { Ad, As, Bd, Bs, Pd_flat, Ps_flat, P_eq, Q_eq, demandIsFlat, supplyIsFlat };
+    }
 
-      // Chart bounds
+    function draw(){
+      const eq = computeEquilibrium();
+
+      // Tags
+      dShiftTag.textContent = parseFloat(dShiftEl.value).toFixed(1);
+      sShiftTag.textContent = parseFloat(sShiftEl.value).toFixed(1);
+      dSteepTag.textContent = dSteepEl.value;
+      sSteepTag.textContent = sSteepEl.value;
+
+      // Equilibrium UI
+      peqEl.textContent = Number.isFinite(eq.P_eq) ? eq.P_eq.toFixed(2) : "—";
+      qeqEl.textContent = Number.isFinite(eq.Q_eq) ? eq.Q_eq.toFixed(2) : "—";
+
+      // Bounds
       const pad = 60;
       const w = canvas.width - pad*2;
       const h = canvas.height - pad*2;
 
-      const qtyMax = clamp(Math.max(70, Ad*1.15, (As + 30)), 70, 160);
-
+      const qtyMax = clamp(Math.max(70, eq.Ad*1.15, (eq.As + 30)), 70, 160);
       let priceMax = 40;
-      if(Number.isFinite(P_eq) && P_eq > 0) priceMax = clamp(P_eq * 1.8, 20, 60);
-      // also ensure flat-line levels are visible
-      priceMax = Math.max(priceMax, Pd_flat + 8, Ps_flat + 8);
+      if(Number.isFinite(eq.P_eq) && eq.P_eq > 0) priceMax = clamp(eq.P_eq * 1.8, 20, 60);
+      priceMax = Math.max(priceMax, eq.Pd_flat + 8, eq.Ps_flat + 8);
 
       function xFromQ(q){ return pad + (q/qtyMax)*w; }
       function yFromP(p){ return pad + h - (p/priceMax)*h; }
@@ -193,7 +786,7 @@
       ctx.moveTo(pad, pad);   ctx.lineTo(pad, pad+h+6);
       ctx.stroke();
 
-      // Axis labels
+      // Labels
       ctx.fillStyle='#333';
       ctx.font='12px system-ui';
       ctx.fillText('Quantity', pad + w - 48, pad + h + 30);
@@ -203,7 +796,7 @@
       ctx.fillText('Price', 0, 0);
       ctx.restore();
 
-      // Helper to draw curve by parameterizing over price
+      // Draw helper: curve by parameterizing over price
       function drawCurve(getQ, strokeStyle){
         ctx.strokeStyle = strokeStyle;
         ctx.lineWidth = 3;
@@ -219,46 +812,46 @@
         ctx.stroke();
       }
 
-      // Draw Demand
-      if(demandIsFlat){
+      // Demand
+      if(eq.demandIsFlat){
         ctx.strokeStyle = '#d64545';
         ctx.lineWidth = 3;
-        const y = yFromP(Pd_flat);
+        const y = yFromP(eq.Pd_flat);
         ctx.beginPath();
         ctx.moveTo(pad, y);
         ctx.lineTo(pad+w, y);
         ctx.stroke();
-      } else if(Bd === 0){
+      } else if(eq.Bd === 0){
         ctx.strokeStyle = '#d64545';
         ctx.lineWidth = 3;
-        const x = xFromQ(clamp(Ad, 0, qtyMax));
+        const x = xFromQ(clamp(eq.Ad, 0, qtyMax));
         ctx.beginPath();
         ctx.moveTo(x, yFromP(0));
         ctx.lineTo(x, yFromP(priceMax));
         ctx.stroke();
       } else {
-        drawCurve((P)=> (Ad - Bd*P), '#d64545');
+        drawCurve((P)=> (eq.Ad - eq.Bd*P), '#d64545');
       }
 
-      // Draw Supply
-      if(supplyIsFlat){
+      // Supply
+      if(eq.supplyIsFlat){
         ctx.strokeStyle = '#2a9d8f';
         ctx.lineWidth = 3;
-        const y = yFromP(Ps_flat);
+        const y = yFromP(eq.Ps_flat);
         ctx.beginPath();
         ctx.moveTo(pad, y);
         ctx.lineTo(pad+w, y);
         ctx.stroke();
-      } else if(Bs === 0){
+      } else if(eq.Bs === 0){
         ctx.strokeStyle = '#2a9d8f';
         ctx.lineWidth = 3;
-        const x = xFromQ(clamp(As, 0, qtyMax));
+        const x = xFromQ(clamp(eq.As, 0, qtyMax));
         ctx.beginPath();
         ctx.moveTo(x, yFromP(0));
         ctx.lineTo(x, yFromP(priceMax));
         ctx.stroke();
       } else {
-        drawCurve((P)=> (As + Bs*P), '#2a9d8f');
+        drawCurve((P)=> (eq.As + eq.Bs*P), '#2a9d8f');
       }
 
       // Legends
@@ -267,10 +860,10 @@
       ctx.fillStyle='#2a9d8f'; ctx.fillRect(canvas.width-150, pad+12, 12, 8);
       ctx.fillStyle='#333'; ctx.fillText('Supply', canvas.width-132, pad+20);
 
-      // Equilibrium marker + dotted tracking lines
-      if(Number.isFinite(P_eq) && Number.isFinite(Q_eq)){
-        const xe = xFromQ(Q_eq);
-        const ye = yFromP(P_eq);
+      // Equilibrium marker + dotted tracking
+      if(Number.isFinite(eq.P_eq) && Number.isFinite(eq.Q_eq)){
+        const xe = xFromQ(eq.Q_eq);
+        const ye = yFromP(eq.P_eq);
 
         ctx.save();
         ctx.setLineDash([4,4]);
@@ -288,69 +881,72 @@
         ctx.fillText('E', xe+8, ye-8);
 
         ctx.fillStyle='#555'; ctx.font='11px system-ui';
-        ctx.fillText(P_eq.toFixed(2), pad-50, ye+4);
-        ctx.fillText(Q_eq.toFixed(2), xe-12, pad+h+18);
+        ctx.fillText(eq.P_eq.toFixed(2), pad-50, ye+4);
+        ctx.fillText(eq.Q_eq.toFixed(2), xe-12, pad+h+18);
       }
 
-      // Price line controls
+      // Price line
       const pcP = parseFloat(pcPrice.value);
       pcPriceTag.textContent = 'P = ' + pcP.toFixed(2);
 
-      const mode = pcCeiling.checked ? 'ceiling' : (pcFloor.checked ? 'floor' : 'none');
+      let mode = "none";
+      if(pcCeiling.checked) mode = "ceiling";
+      if(pcFloor.checked) mode = "floor";
 
-      // Compute Qd and Qs at the control price
-      // For flat demand/supply, interpret as "available any quantity at that price" with a simple step:
-      // demand: if price <= Pd_flat => huge QD, else ~0
-      // supply: if price >= Ps_flat => huge QS, else ~0
+      // Qd and Qs at Pc
       let Qd_at;
-      if(demandIsFlat){
-        Qd_at = (pcP <= Pd_flat) ? qtyMax : 0;
-      } else if(Bd === 0){
-        Qd_at = Ad;
+      if(eq.demandIsFlat){
+        Qd_at = (pcP <= eq.Pd_flat) ? qtyMax : 0;
+      } else if(eq.Bd === 0){
+        Qd_at = eq.Ad;
       } else {
-        Qd_at = Ad - Bd*pcP;
+        Qd_at = eq.Ad - eq.Bd*pcP;
       }
 
       let Qs_at;
-      if(supplyIsFlat){
-        Qs_at = (pcP >= Ps_flat) ? qtyMax : 0;
-      } else if(Bs === 0){
-        Qs_at = As;
+      if(eq.supplyIsFlat){
+        Qs_at = (pcP >= eq.Ps_flat) ? qtyMax : 0;
+      } else if(eq.Bs === 0){
+        Qs_at = eq.As;
       } else {
-        Qs_at = As + Bs*pcP;
+        Qs_at = eq.As + eq.Bs*pcP;
       }
 
       Qd_at = clamp(Qd_at, 0, qtyMax);
       Qs_at = clamp(Qs_at, 0, qtyMax);
 
-      // Draw price line + intersection points + shortage/surplus bracket if binding
-      if(mode !== 'none'){
+      function bindingText(){
+        if(!Number.isFinite(eq.P_eq)) return "Equilibrium not uniquely defined";
+        if(mode === "none") return "None";
+        const binding = (mode === "ceiling") ? (pcP < eq.P_eq) : (pcP > eq.P_eq);
+        return binding ? "Binding" : "Non-binding";
+      }
+
+      if(mode !== "none"){
         const yLine = yFromP(pcP);
 
-        // price line
+        // line style
         ctx.save();
         ctx.setLineDash([6,6]);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = (mode === 'ceiling') ? 'rgba(255, 170, 0, 0.95)' : 'rgba(30, 140, 90, 0.95)';
+        ctx.strokeStyle = (mode === "ceiling") ? 'rgba(255, 170, 0, 0.95)' : 'rgba(30, 140, 90, 0.95)';
         ctx.beginPath();
         ctx.moveTo(pad, yLine);
         ctx.lineTo(pad+w, yLine);
         ctx.stroke();
         ctx.restore();
 
-        // intersection points
+        // intersections
         const xQD = xFromQ(Qd_at);
         const xQS = xFromQ(Qs_at);
 
         ctx.save();
-
-        // dots on the price line
         ctx.fillStyle = '#d64545';
         ctx.beginPath(); ctx.arc(xQD, yLine, 5, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#2a9d8f';
         ctx.beginPath(); ctx.arc(xQS, yLine, 5, 0, Math.PI*2); ctx.fill();
 
-        // dotted drop lines to axis
+        // dotted drops
         ctx.setLineDash([4,4]);
         ctx.strokeStyle = 'rgba(0,0,0,0.18)';
         ctx.lineWidth = 1;
@@ -360,16 +956,15 @@
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // binding + bracket label (only if equilibrium exists)
-        if(Number.isFinite(P_eq)){
-          const binding = (mode === 'ceiling') ? (pcP < P_eq) : (pcP > P_eq);
-
+        // bracket if binding and equilibrium defined
+        if(Number.isFinite(eq.P_eq)){
+          const binding = (mode === "ceiling") ? (pcP < eq.P_eq) : (pcP > eq.P_eq);
           if(binding){
             const left = Math.min(xQD, xQS);
             const right = Math.max(xQD, xQS);
 
-            let label = '';
-            if(mode === 'ceiling'){
+            let label = "";
+            if(mode === "ceiling"){
               const shortage = Math.max(0, Qd_at - Qs_at);
               label = `Shortage ≈ ${shortage.toFixed(2)}`;
             } else {
@@ -394,50 +989,38 @@
         ctx.restore();
       }
 
-      // Price control result text
-      if(!Number.isFinite(P_eq) || !Number.isFinite(Q_eq)){
-        if(mode === 'none'){
-          pcResult.textContent = 'None';
-        } else {
-          pcResult.textContent = 'Equilibrium is not unique/defined in this extreme configuration, but you can still see QD and QS at the chosen price line.';
-        }
+      // Result text
+      if(mode === "none"){
+        pcResult.textContent = "None";
+      } else if(!Number.isFinite(eq.P_eq) || !Number.isFinite(eq.Q_eq)){
+        pcResult.textContent = "Price line shown (equilibrium not unique in extreme setting)";
       } else {
-        if(mode === 'none'){
-          pcResult.textContent = 'None';
+        const binding = (mode === "ceiling") ? (pcP < eq.P_eq) : (pcP > eq.P_eq);
+        if(!binding){
+          pcResult.textContent = (mode === "ceiling") ? "Ceiling is non-binding, market stays at equilibrium" : "Floor is non-binding, market stays at equilibrium";
         } else {
-          const binding = (mode === 'ceiling') ? (pcP < P_eq) : (pcP > P_eq);
-
-          if(!binding){
-            pcResult.textContent = (mode === 'ceiling')
-              ? 'Ceiling is non-binding. Market stays at equilibrium.'
-              : 'Floor is non-binding. Market stays at equilibrium.';
+          if(mode === "ceiling"){
+            const shortage = Math.max(0, Qd_at - Qs_at);
+            pcResult.textContent = `Binding ceiling, shortage ≈ ${shortage.toFixed(2)} (${bindingText()})`;
           } else {
-            if(mode === 'ceiling'){
-              const shortage = Math.max(0, Qd_at - Qs_at);
-              const traded = Qs_at;
-              pcResult.textContent = `Binding ceiling. Quantity traded limited by supply ≈ ${traded.toFixed(2)}. Shortage ≈ ${shortage.toFixed(2)}.`;
-            } else {
-              const surplus = Math.max(0, Qs_at - Qd_at);
-              const traded = Qd_at;
-              pcResult.textContent = `Binding floor. Quantity traded limited by demand ≈ ${traded.toFixed(2)}. Surplus ≈ ${surplus.toFixed(2)}.`;
-            }
+            const surplus = Math.max(0, Qs_at - Qd_at);
+            pcResult.textContent = `Binding floor, surplus ≈ ${surplus.toFixed(2)} (${bindingText()})`;
           }
         }
       }
 
-      // Slider tags
-      dShiftTag.textContent = d0.toFixed(1);
-      sShiftTag.textContent = s0.toFixed(1);
-      dSteepTag.textContent = dSteepEl.value;
-      sSteepTag.textContent = sSteepEl.value;
+      // Keep scenario text synced
+      if(practiceOn) updateScenarioText();
     }
 
-    // Events
+    // Keep everything responsive
     [dShiftEl, sShiftEl, dSteepEl, sSteepEl, pcPrice, pcNone, pcCeiling, pcFloor].forEach(el=>{
-      el.addEventListener('input', draw);
-      el.addEventListener('change', draw);
+      el.addEventListener('input', ()=>{ draw(); });
+      el.addEventListener('change', ()=>{ draw(); });
     });
 
+    // Initialize practice UI off
+    setPracticeUI(false);
     draw();
   </script>
 </body>
