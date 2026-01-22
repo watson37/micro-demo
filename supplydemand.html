@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Interactive Supply & Demand Demo</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:18px;color:#111}
+    h1{font-size:20px;margin-bottom:6px}
+    .row{display:flex;gap:18px;align-items:flex-start}
+    .controls{width:320px}
+    label{display:block;margin:10px 0 6px;font-weight:600}
+    input[type=range]{width:100%}
+    canvas{background:#fbfbfb;border:1px solid #e6e6e6;border-radius:8px}
+    .info{margin-top:12px}
+    .stat{margin:6px 0}
+    .muted{color:#666;font-size:13px}
+    .btn{display:inline-block;padding:8px 12px;border-radius:8px;background:#0366d6;color:white;text-decoration:none}
+  </style>
+</head>
+<body>
+  <h1>Interactive Supply & Demand Demo</h1>
+  <p class="muted">Move the sliders to shift the demand or supply curves and watch the equilibrium update. Useful for classroom demos in microeconomics.</p>
+  <div class="row">
+    <div class="controls">
+      <label>Demand intercept (higher = demand shifts right)</label>
+      <input id="dIntercept" type="range" min="-8" max="8" step="0.5" value="0">
+
+      <label>Supply intercept (higher = supply shifts right)</label>
+      <input id="sIntercept" type="range" min="-8" max="8" step="0.5" value="0">
+
+      <label>Price sensitivity: demand slope (steeper = more inelastic)</label>
+      <input id="dSlope" type="range" min="0.5" max="5" step="0.1" value="2">
+
+      <label>Price sensitivity: supply slope (steeper = more inelastic)</label>
+      <input id="sSlope" type="range" min="0.5" max="5" step="0.1" value="1.5">
+
+      <div class="info">
+        <div class="stat"><strong>Equilibrium Price:</strong> <span id="peq">—</span></div>
+        <div class="stat"><strong>Equilibrium Quantity:</strong> <span id="qeq">—</span></div>
+      </div>
+
+      <p class="muted">Download as a single HTML file and open in any modern browser. Feel free to edit the labels, colors, or math.</p>
+    </div>
+
+    <canvas id="chart" width="720" height="480"></canvas>
+  </div>
+
+  <script>
+    // Simple linear supply & demand model
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+
+    const dInterceptEl = document.getElementById('dIntercept');
+    const sInterceptEl = document.getElementById('sIntercept');
+    const dSlopeEl = document.getElementById('dSlope');
+    const sSlopeEl = document.getElementById('sSlope');
+
+    const peqEl = document.getElementById('peq');
+    const qeqEl = document.getElementById('qeq');
+
+    function draw(){
+      const d0 = parseFloat(dInterceptEl.value); // demand intercept
+      const s0 = parseFloat(sInterceptEl.value); // supply intercept
+      const kd = parseFloat(dSlopeEl.value); // demand slope factor
+      const ks = parseFloat(sSlopeEl.value); // supply slope factor
+
+      // demand: Q = a_d - b_d*P   (rearrange for P vs Q when needed)
+      // supply: Q = a_s + b_s*P
+      // We'll param as: Q = intercept +/- slope*P
+
+      const a_d = 50 + d0*4; // base intercept for demand
+      const b_d = kd*3; // slope magnitude
+
+      const a_s = 8 + s0*3; // base intercept for supply
+      const b_s = ks*2; // slope magnitude
+
+      // Solve for equilibrium: a_d - b_d*P = a_s + b_s*P
+      // => P*(b_d + b_s) = a_d - a_s
+      const P_eq = (a_d - a_s) / (b_d + b_s);
+      const Q_eq = a_d - b_d*P_eq;
+
+      // update UI
+      peqEl.textContent = P_eq.toFixed(2);
+      qeqEl.textContent = Q_eq.toFixed(2);
+
+      // coordinate mapping
+      const pad = 60;
+      const w = canvas.width - pad*2;
+      const h = canvas.height - pad*2;
+
+      const priceMax = Math.max( (a_d - a_s)/(Math.max(0.1,b_d + b_s)) * 1.6, 30 );
+      const qtyMax = Math.max(a_d*1.2, 60);
+
+      function xFromQ(q){ return pad + (q/qtyMax)*w; }
+      function yFromP(p){ return pad + h - (p/priceMax)*h; }
+
+      // clear
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // axes
+      ctx.strokeStyle = '#222'; ctx.lineWidth=1;
+      ctx.beginPath(); // x axis
+      ctx.moveTo(pad, pad+h); ctx.lineTo(pad+w, pad+h);
+      ctx.moveTo(pad, pad); ctx.lineTo(pad, pad+h+6);
+      ctx.stroke();
+
+      // draw demand curve Q = a_d - b_d*P  -> param by P
+      ctx.lineWidth = 3;
+      // demand as red
+      ctx.strokeStyle = '#d64545';
+      ctx.beginPath();
+      for(let i=0;i<=200;i++){
+        const t = i/200;
+        const P = t*priceMax;
+        const Q = a_d - b_d*P;
+        const x = xFromQ(Math.max(0,Q));
+        const y = yFromP(P);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      // supply curve Q = a_s + b_s*P
+      ctx.strokeStyle = '#2a9d8f'; ctx.lineWidth = 3;
+      ctx.beginPath();
+      for(let i=0;i<=200;i++){
+        const t = i/200;
+        const P = t*priceMax;
+        const Q = a_s + b_s*P;
+        const x = xFromQ(Math.max(0,Q));
+        const y = yFromP(P);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+
+      // equilibrium marker
+      const xe = xFromQ(Q_eq);
+      const ye = yFromP(P_eq);
+
+      ctx.fillStyle = 'black';
+      ctx.beginPath(); ctx.arc(xe, ye, 5, 0, Math.PI*2); ctx.fill();
+      ctx.font = '13px system-ui'; ctx.fillText('E', xe+8, ye-8);
+
+      // labels
+      ctx.fillStyle='#333'; ctx.font='12px system-ui';
+      ctx.fillText('Quantity', pad + w - 40, pad + h + 30);
+      ctx.save(); ctx.translate(pad-40, pad+20); ctx.rotate(-Math.PI/2); ctx.fillText('Price', 0,0); ctx.restore();
+
+      // legends
+      ctx.fillStyle='#d64545'; ctx.fillRect(canvas.width-150, pad-8, 12, 8); ctx.fillStyle='#333'; ctx.fillText('Demand', canvas.width-132, pad);
+      ctx.fillStyle='#2a9d8f'; ctx.fillRect(canvas.width-150, pad+12, 12, 8); ctx.fillStyle='#333'; ctx.fillText('Supply', canvas.width-132, pad+20);
+
+      // grid lines for equilibrium
+      ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(pad, ye); ctx.lineTo(xe, ye); ctx.moveTo(xe, pad+h); ctx.lineTo(xe, ye); ctx.stroke();
+
+      // small numeric ticks
+      ctx.fillStyle='#555'; ctx.font='11px system-ui';
+      // price tick
+      ctx.fillText(P_eq.toFixed(2), pad-50, ye+4);
+      // qty tick
+      ctx.fillText(Q_eq.toFixed(2), xe-12, pad+h+18);
+
+    }
+
+    dInterceptEl.addEventListener('input', draw);
+    sInterceptEl.addEventListener('input', draw);
+    dSlopeEl.addEventListener('input', draw);
+    sSlopeEl.addEventListener('input', draw);
+
+    // initial draw
+    draw();
+  </script>
+</body>
+</html>
