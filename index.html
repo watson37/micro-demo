@@ -18,28 +18,35 @@
     .small{color:#666;font-size:12px}
     .pcRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
     .pill{display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid #e6e6e6;background:#fff;font-size:12px}
+    .btn{display:inline-block;padding:8px 10px;border-radius:8px;background:#0366d6;color:white;text-decoration:none;border:0;cursor:pointer}
+    .rowTop{display:flex;justify-content:space-between;align-items:center}
   </style>
 </head>
 <body>
-  <h1>Interactive Supply & Demand Demo</h1>
-  <p class="muted">Axes are fixed (0–100). Shift curves and watch equilibrium move without the graph rescaling.</p>
+  <div class="rowTop">
+    <div>
+      <h1>Interactive Supply & Demand Demo</h1>
+      <p class="muted">Axes fixed (0–100). Curves stop drawing when they exit the visible price range. Use Reset to return to defaults.</p>
+    </div>
+    <div>
+      <button id="resetBtn" class="btn">↺ Reset</button>
+    </div>
+  </div>
 
-  <div class="row">
+  <div class="row" style="margin-top:12px;">
     <div class="controls">
       <label>Demand shift (right = higher demand)</label>
       <input id="dIntercept" type="range" min="-8" max="8" step="0.5" value="0">
-      <div class="small">This moves demand right/left, axes stay fixed.</div>
+      <div class="small">This moves demand up/down without rescaling the axes.</div>
 
       <label>Supply shift (right = higher supply)</label>
       <input id="sIntercept" type="range" min="-8" max="8" step="0.5" value="0">
 
-      <label>Demand steepness (steeper = more inelastic)</label>
+      <label>Demand steepness (0 = flat / perfectly elastic)</label>
       <input id="dSlope" type="range" min="0" max="5" step="0.1" value="2">
-      <div class="small">0 = perfectly elastic (horizontal). Higher = steeper demand curve.</div>
 
-      <label>Supply steepness (steeper = more inelastic)</label>
+      <label>Supply steepness (0 = flat / perfectly elastic)</label>
       <input id="sSlope" type="range" min="0" max="5" step="0.1" value="1.5">
-      <div class="small">0 = perfectly elastic (horizontal). Higher = steeper supply curve.</div>
 
       <hr style="border:none;border-top:1px solid #eee;margin:12px 0">
 
@@ -81,6 +88,7 @@
     const peqEl = document.getElementById('peq');
     const qeqEl = document.getElementById('qeq');
     const pcNoteEl = document.getElementById('pcNote');
+    const resetBtn = document.getElementById('resetBtn');
 
     // Fixed axis ranges
     const Q_MIN = 0, Q_MAX = 100;
@@ -88,40 +96,30 @@
 
     function clamp(x, a, b){ return Math.min(b, Math.max(a, x)); }
 
+    // --- draw logic ---
     function draw(){
       const d0 = parseFloat(dInterceptEl.value);
       const s0 = parseFloat(sInterceptEl.value);
 
       // "Steepness" sliders
-      // Use 0 to mean perfectly elastic (horizontal line).
       const kd = parseFloat(dSlopeEl.value);
       const ks = parseFloat(sSlopeEl.value);
 
-      // Build linear-ish curves in "P as function of Q" form for easy plotting:
-      // Demand: P = A_d - m_d * Q
-      // Supply: P = A_s + m_s * Q
-      //
-      // When kd = 0: m_d = 0 -> horizontal demand at A_d (perfectly elastic)
-      // When ks = 0: m_s = 0 -> horizontal supply at A_s (perfectly elastic)
-
-      const A_d = 80 + d0*4;           // demand vertical position (up/down)
-      const A_s = 20 + s0*4;           // supply vertical position (up/down)
-      const m_d = kd * 0.8;            // demand slope magnitude
-      const m_s = ks * 0.8;            // supply slope magnitude
+      // Param as linear P = A - m*Q (demand), P = B + n*Q (supply)
+      const A_d = 80 + d0*4; // demand vertical position
+      const A_s = 20 + s0*4; // supply vertical position
+      const m_d = kd * 0.8;
+      const m_s = ks * 0.8;
 
       function P_d(Q){ return A_d - m_d * Q; }
       function P_s(Q){ return A_s + m_s * Q; }
 
-      // Solve equilibrium:
-      // A_d - m_d Q = A_s + m_s Q
-      // (m_d + m_s) Q = (A_d - A_s)
+      // Solve equilibrium: (m_d + m_s) Q = (A_d - A_s)
       let Q_eq, P_eq;
-
       const denom = (m_d + m_s);
 
-      if (Math.abs(denom) < 1e-9){
-        // Both are (nearly) horizontal and parallel: no unique intersection.
-        // We'll pick the midpoint as a pedagogical fallback.
+      if (Math.abs(denom) < 1e-9) {
+        // Nearly parallel horizontals - fallback midpoint so students can see behavior
         Q_eq = 50;
         P_eq = (P_d(50) + P_s(50)) / 2;
       } else {
@@ -129,14 +127,13 @@
         P_eq = P_s(Q_eq);
       }
 
-      // Clamp equilibrium to the viewing box
       Q_eq = clamp(Q_eq, Q_MIN, Q_MAX);
       P_eq = clamp(P_eq, P_MIN, P_MAX);
 
       peqEl.textContent = P_eq.toFixed(2);
       qeqEl.textContent = Q_eq.toFixed(2);
 
-      // Mapping: fixed axes 0–100
+      // mapping
       const pad = 60;
       const w = canvas.width - pad*2;
       const h = canvas.height - pad*2;
@@ -144,17 +141,17 @@
       function xFromQ(q){ return pad + ((q - Q_MIN)/(Q_MAX - Q_MIN))*w; }
       function yFromP(p){ return pad + h - ((p - P_MIN)/(P_MAX - P_MIN))*h; }
 
-      // Clear
+      // clear
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      // Axes
+      // axes
       ctx.strokeStyle = '#222'; ctx.lineWidth=1;
       ctx.beginPath();
       ctx.moveTo(pad, pad+h); ctx.lineTo(pad+w, pad+h); // x-axis
       ctx.moveTo(pad, pad);   ctx.lineTo(pad, pad+h);   // y-axis
       ctx.stroke();
 
-      // Grid + ticks (0..100)
+      // grid + ticks
       ctx.font = '11px system-ui';
       ctx.fillStyle = '#555';
       ctx.strokeStyle = 'rgba(0,0,0,0.06)';
@@ -171,30 +168,41 @@
         ctx.fillText(p.toString(), pad-28, y+4);
       }
 
-      // Labels
+      // labels
       ctx.fillStyle='#333'; ctx.font='12px system-ui';
       ctx.fillText('Quantity', pad + w - 46, pad + h + 34);
       ctx.save(); ctx.translate(pad-44, pad+24); ctx.rotate(-Math.PI/2); ctx.fillText('Price', 0,0); ctx.restore();
 
-      // Plot curves by Q from 0..100 (fixed)
-      function plotCurve(PofQ, color){
+      // Plot curves by Q from 0..100 but stop drawing segments whenever P is outside [0,100]
+      function plotCurveWithClipping(PofQ, color){
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
+        let drawing = false;
         ctx.beginPath();
-        for(let i=0;i<=200;i++){
-          const Q = Q_MIN + (i/200)*(Q_MAX - Q_MIN);
-          let P = PofQ(Q);
-          // clamp to box so it stays in frame
-          P = clamp(P, P_MIN, P_MAX);
+        const steps = 240;
+        for(let i=0;i<=steps;i++){
+          const Q = Q_MIN + (i/steps)*(Q_MAX - Q_MIN);
+          const P = PofQ(Q);
+          const inside = (P >= P_MIN - 1e-6 && P <= P_MAX + 1e-6);
           const x = xFromQ(Q);
-          const y = yFromP(P);
-          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+          const y = yFromP(clamp(P, P_MIN, P_MAX));
+          if(inside){
+            if(!drawing){
+              ctx.moveTo(x,y);
+              drawing = true;
+            } else {
+              ctx.lineTo(x,y);
+            }
+          } else {
+            // end current segment (if any) and skip drawing until back inside
+            drawing = false;
+          }
         }
         ctx.stroke();
       }
 
-      plotCurve(P_d, '#d64545'); // demand
-      plotCurve(P_s, '#2a9d8f'); // supply
+      plotCurveWithClipping(P_d, '#d64545'); // demand
+      plotCurveWithClipping(P_s, '#2a9d8f'); // supply
 
       // Equilibrium crosshair (dotted)
       const xe = xFromQ(Q_eq);
@@ -220,7 +228,6 @@
       // Price control line + shortage/surplus markers
       const pc = parseFloat(priceControlEl.value);
       pcValEl.textContent = pc.toFixed(0);
-
       const mode = pcCeil.checked ? 'ceiling' : (pcFloor.checked ? 'floor' : 'none');
 
       if(mode === 'none'){
@@ -228,7 +235,7 @@
         return;
       }
 
-      // Draw horizontal price line
+      // draw horizontal price line
       const ypc = yFromP(pc);
       ctx.lineWidth = 2;
       ctx.setLineDash([6,6]);
@@ -236,10 +243,7 @@
       ctx.beginPath(); ctx.moveTo(pad, ypc); ctx.lineTo(pad+w, ypc); ctx.stroke();
       ctx.setLineDash([]);
 
-      // Find Qd and Qs at the controlled price:
-      // For demand: pc = A_d - m_d Q => Qd = (A_d - pc)/m_d, but if m_d==0 horizontal demand:
-      //   if pc == A_d -> any Q; we'll show mid as 50
-      //   if pc > A_d -> Qd=0; if pc < A_d -> Qd=100
+      // Qd and Qs at the controlled price
       function QdAtPrice(p){
         if(Math.abs(m_d) < 1e-9){
           if (Math.abs(p - A_d) < 1e-6) return 50;
@@ -258,8 +262,9 @@
       let Qd = clamp(QdAtPrice(pc), Q_MIN, Q_MAX);
       let Qs = clamp(QsAtPrice(pc), Q_MIN, Q_MAX);
 
-      // Mark intersection points on the price line (visual shortage/surplus)
+      // mark points if they are within the view
       function markPoint(Q, p, color, label){
+        if(p < P_MIN - 1e-6 || p > P_MAX + 1e-6) return;
         const x = xFromQ(Q);
         const y = yFromP(p);
         ctx.fillStyle = color;
@@ -277,10 +282,10 @@
         if(binding){
           const shortage = Math.max(0, Qd - Qs);
           pcNoteEl.textContent = `Binding ceiling: shortage ≈ ${shortage.toFixed(2)} (QD - QS at P=${pc.toFixed(0)}).`;
-          // draw bracket line between QS and QD
+          // bracket
           ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=2;
           ctx.beginPath(); ctx.moveTo(xFromQ(Qs), ypc+12); ctx.lineTo(xFromQ(Qd), ypc+12); ctx.stroke();
-        }else{
+        } else {
           pcNoteEl.textContent = `Non-binding ceiling: market stays at equilibrium.`;
         }
       } else {
@@ -290,19 +295,47 @@
           pcNoteEl.textContent = `Binding floor: surplus ≈ ${surplus.toFixed(2)} (QS - QD at P=${pc.toFixed(0)}).`;
           ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=2;
           ctx.beginPath(); ctx.moveTo(xFromQ(Qd), ypc+12); ctx.lineTo(xFromQ(Qs), ypc+12); ctx.stroke();
-        }else{
+        } else {
           pcNoteEl.textContent = `Non-binding floor: market stays at equilibrium.`;
         }
       }
     }
 
-    // Events
-    [dInterceptEl, sInterceptEl, dSlopeEl, sSlopeEl, priceControlEl, pcNone, pcCeil, pcFloor].forEach(el=>{
-      el.addEventListener('input', draw);
-      el.addEventListener('change', draw);
-    });
+    // --- events & reset ---
+    function wireEvents(){
+      const inputs = [dInterceptEl, sInterceptEl, dSlopeEl, sSlopeEl, priceControlEl, pcNone, pcCeil, pcFloor];
+      inputs.forEach(el => {
+        el.addEventListener('input', draw);
+        el.addEventListener('change', draw);
+      });
 
+      resetBtn.addEventListener('click', ()=> {
+        // defaults match initial values above
+        dInterceptEl.value = 0;
+        sInterceptEl.value = 0;
+        dSlopeEl.value = 2;
+        sSlopeEl.value = 1.5;
+        priceControlEl.value = 50;
+        pcNone.checked = true;
+        // ensure UI updates
+        draw();
+      });
+    }
+
+    // init
+    wireEvents();
     draw();
+
+    // handle high-DPI canvas sizing (optional improvement)
+    (function adjustDPI(){
+      const dpr = window.devicePixelRatio || 1;
+      const styleW = canvas.clientWidth;
+      const styleH = canvas.clientHeight;
+      canvas.width = Math.round(styleW * dpr);
+      canvas.height = Math.round(styleH * dpr);
+      ctx.scale(dpr, dpr);
+      draw();
+    })();
   </script>
 </body>
 </html>
