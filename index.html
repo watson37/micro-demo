@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Interactive Supply & Demand Demo (Scenarios)</title>
+  <title>Interactive Supply & Demand Demo (Scenarios + Check)</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:18px;color:#111;background:#f7f8fb}
     h1{font-size:20px;margin-bottom:6px}
@@ -12,7 +12,7 @@
     @media (max-width: 900px){.row{flex-direction:column}.controls{width:100%}}
     label{display:block;margin:10px 0 6px;font-weight:600}
     input[type=range]{width:100%}
-    canvas{background:#fff;border:1px solid #e6e6e6;border-radius:8px;display:block}
+    canvas{background:#ffffff;border:1px solid #e6e6e6;border-radius:8px;display:block}
     .muted{color:#666;font-size:13px;margin:0 0 10px}
     .small{color:#666;font-size:12px}
     .pcRow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
@@ -32,11 +32,13 @@
     select, button {font-family:inherit}
     .btn {padding:8px 10px;border-radius:8px;border:0;background:#0366d6;color:white;cursor:pointer}
     .btn.secondary {background:#6c757d}
+    .feedback {margin-top:10px;padding:8px;border-radius:8px;background:#fff9e6;border:1px solid #ffe1a8;color:#7a5200}
+    .feedback.pass {background:#e8ffef;border-color:#b8f0c9;color:#086937}
   </style>
 </head>
 <body>
   <h1>Interactive Supply & Demand Demo</h1>
-  <p class="muted">Axes fixed at 0–100. Curves stop drawing when they move outside the view. Use controls to shift curves, change steepness, and test price ceilings/floors. Turn on Scenario Mode to load practice situations.</p>
+  <p class="muted">Axes fixed at 0–100. Baseline (scenario) curve appears dashed when a scenario is started; your student-controlled curve moves above it. Use <b>Check answer</b> in Scenario Mode to grade attempts.</p>
 
   <div class="row">
     <div class="controls card">
@@ -45,7 +47,7 @@
         <button id="resetBtn" class="resetBtn" title="Reset sliders to defaults">↺</button>
       </div>
 
-      <div class="small" style="margin-bottom:8px;">Tip: set steepness to <b>0</b> for an effectively flat (perfectly elastic) curve; set it big for steep/near-inelastic.</div>
+      <div class="small" style="margin-bottom:8px;">Tip: set steepness to <b>0</b> for an effectively flat (perfectly elastic) curve; set it larger for steep / near-inelastic.</div>
 
       <label>Demand shift (higher = demand up / right)</label>
       <input id="dIntercept" type="range" min="-8" max="8" step="0.5" value="0">
@@ -84,26 +86,31 @@
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
           <select id="scenarioSelect" style="flex:1;padding:6px;border-radius:6px;border:1px solid #cfe6ff">
             <option value="demand_boom">Demand boom — strong demand shock</option>
-            <option value="supply_shock">Supply shock — oil / cost shock</option>
+            <option value="supply_shock">Supply shock — cost shock</option>
             <option value="productivity">Productivity jump — supply right</option>
             <option value="housing_slow">Housing slowdown — demand down</option>
-            <option value="binding_ceiling">Binding ceiling (set P low)</option>
-            <option value="binding_floor">Binding floor (set P high)</option>
+            <option value="binding_ceiling">Binding ceiling — create shortage</option>
+            <option value="binding_floor">Binding floor — create surplus</option>
           </select>
-          <button id="loadScenario" class="btn">Load</button>
+          <button id="startScenario" class="btn">Start scenario</button>
         </div>
-        <div class="small" id="scenarioHint">Load a scenario to set sliders and practice diagnosis. Students can then adjust sliders to explore outcomes.</div>
+
+        <div class="small" id="scenarioHint">Start a scenario to snapshot a baseline dashed curve, then adjust sliders (solid curve) to respond. Use Check Answer when ready.</div>
+
         <div style="display:flex;gap:8px;margin-top:10px">
-          <button id="unlockPlay" class="btn secondary" title="Return to free play values">Return to Free Play</button>
-          <button id="centerSliders" class="btn" title="Snap sliders to center/defaults">Center Sliders</button>
+          <button id="resetToScenario" class="btn secondary">Reset to scenario defaults</button>
+          <button id="checkAnswer" class="btn">Check answer</button>
+          <button id="exitScenario" class="btn secondary">Exit scenario</button>
         </div>
+
+        <div id="feedback" style="display:none" class="feedback"></div>
       </div>
 
     </div>
 
     <div class="card" style="flex:1">
       <canvas id="chart" width="840" height="520"></canvas>
-      <div class="small" style="margin-top:8px;">Demand = red, Supply = green. Equilibrium guides dotted. QD and QS shown when a price control is active.</div>
+      <div class="small" style="margin-top:8px;">Baseline (scenario) curve is dashed & faint; student-controlled curve is solid. Equilibrium dotted crosshair shows the intersection.</div>
     </div>
   </div>
 
@@ -132,9 +139,11 @@
     const scenarioToggle = document.getElementById('scenarioToggle');
     const scenarioBox = document.getElementById('scenarioBox');
     const scenarioSelect = document.getElementById('scenarioSelect');
-    const loadScenario = document.getElementById('loadScenario');
-    const unlockPlay = document.getElementById('unlockPlay');
-    const centerSliders = document.getElementById('centerSliders');
+    const startScenarioBtn = document.getElementById('startScenario');
+    const resetToScenarioBtn = document.getElementById('resetToScenario');
+    const checkAnswerBtn = document.getElementById('checkAnswer');
+    const exitScenarioBtn = document.getElementById('exitScenario');
+    const feedbackEl = document.getElementById('feedback');
 
     // ---- constants & defaults ----
     const Q_MIN = 0, Q_MAX = 100;
@@ -149,57 +158,108 @@
       pcMode: 'none'
     };
 
-    // scenario presets (values set to produce clear teaching moments)
+    // scenario presets plus simple "expectation" checks
     const SCENARIOS = {
       demand_boom: {
         name: 'Demand boom',
-        desc: 'Demand shifts right strongly (higher intercept). Expect higher P and Q.',
-        values: { dIntercept: 6, sIntercept: 0, dSlope: 1.6, sSlope: 1.5, priceControl: 50, pcMode: 'none' }
+        desc: 'Demand shifts right strongly (higher intercept). Expect higher P and Q than baseline (by > 4).',
+        values: { dIntercept: 6, sIntercept: 0, dSlope: 1.6, sSlope: 1.5, priceControl: 50, pcMode: 'none' },
+        check: (baseline, student) => {
+          // pass if student P > baseline P + 4
+          return { pass: student.P > baseline.P + 4, hint: `Your P should be noticeably above the baseline (by ~4+). Baseline P=${baseline.P.toFixed(2)}.` };
+        }
       },
       supply_shock: {
         name: 'Supply shock',
-        desc: 'Supply shifts left / up in price (lower supply), raises P and lowers Q.',
-        values: { dIntercept: 0, sIntercept: -6, dSlope: 2.2, sSlope: 2.2, priceControl: 50, pcMode: 'none' }
+        desc: 'Supply shifts left / up in price. Expect P higher, Q lower vs baseline.',
+        values: { dIntercept: 0, sIntercept: -6, dSlope: 2.2, sSlope: 2.2, priceControl: 50, pcMode: 'none' },
+        check: (baseline, student) => {
+          return { pass: (student.P > baseline.P + 3 && student.Q < baseline.Q - 3), hint: `Try raising price relative to baseline and expect quantity to fall.` };
+        }
       },
       productivity: {
         name: 'Productivity jump',
-        desc: 'Supply shifts right, lowering price and raising quantity.',
-        values: { dIntercept: 0, sIntercept: 6, dSlope: 2.0, sSlope: 1.6, priceControl: 50, pcMode: 'none' }
+        desc: 'Supply shifts right; expect P lower and Q higher vs baseline.',
+        values: { dIntercept: 0, sIntercept: 6, dSlope: 2.0, sSlope: 1.6, priceControl: 50, pcMode: 'none' },
+        check: (baseline, student) => {
+          return { pass: (student.P < baseline.P - 3 && student.Q > baseline.Q + 3), hint: `Try lowering price relative to baseline and expect quantity to rise.` };
+        }
       },
       housing_slow: {
         name: 'Housing slowdown',
         desc: 'Demand down (left), lowers P and Q.',
-        values: { dIntercept: -5, sIntercept: 0, dSlope: 2.1, sSlope: 1.6, priceControl: 50, pcMode: 'none' }
+        values: { dIntercept: -5, sIntercept: 0, dSlope: 2.1, sSlope: 1.6, priceControl: 50, pcMode: 'none' },
+        check: (baseline, student) => {
+          return { pass: (student.P < baseline.P - 3 && student.Q < baseline.Q - 3), hint: `Demand down means lower P and lower Q than baseline.` };
+        }
       },
       binding_ceiling: {
         name: 'Binding ceiling',
         desc: 'Set a ceiling below equilibrium to create a shortage.',
-        values: { dIntercept: 2, sIntercept: 0, dSlope: 2.0, sSlope: 1.5, priceControl: 40, pcMode: 'ceiling' }
+        values: { dIntercept: 2, sIntercept: 0, dSlope: 2.0, sSlope: 1.5, priceControl: 40, pcMode: 'ceiling' },
+        check: (baseline, student, pc, studentQsAtPc, studentQdAtPc) => {
+          const binding = (pc < baseline.P);
+          const shortage = Math.max(0, studentQdAtPc - studentQsAtPc);
+          return { pass: binding && shortage > 3, hint: binding ? `Shortage ≈ ${shortage.toFixed(2)} — try to make it >3 to be clearly binding.` : `Ceiling must be set below baseline price (${baseline.P.toFixed(2)}) to bind.`};
+        }
       },
       binding_floor: {
         name: 'Binding floor',
         desc: 'Set a floor above equilibrium to create a surplus.',
-        values: { dIntercept: 0, sIntercept: 2, dSlope: 2.0, sSlope: 1.5, priceControl: 70, pcMode: 'floor' }
+        values: { dIntercept: 0, sIntercept: 2, dSlope: 2.0, sSlope: 1.5, priceControl: 70, pcMode: 'floor' },
+        check: (baseline, student, pc, studentQsAtPc, studentQdAtPc) => {
+          const binding = (pc > baseline.P);
+          const surplus = Math.max(0, studentQsAtPc - studentQdAtPc);
+          return { pass: binding && surplus > 3, hint: binding ? `Surplus ≈ ${surplus.toFixed(2)} — try to make it >3 to be clearly binding.` : `Floor must be set above baseline price (${baseline.P.toFixed(2)}) to bind.`};
+        }
       }
     };
+
+    // ---- state for scenario baseline vs student-controlled ----
+    let scenarioActive = false;
+    let activeScenarioKey = null;
+    let baselineState = null;   // stored when scenario started
+    let baselineEquil = null;   // {P, Q}
+    // student curve uses current slider values (these are editable)
 
     // ---- helpers ----
     function clamp(x,a,b){ return Math.min(b, Math.max(a,x)); }
 
-    function setState(s){
-      if('dIntercept' in s) dInterceptEl.value = s.dIntercept;
-      if('sIntercept' in s) sInterceptEl.value = s.sIntercept;
-      if('dSlope' in s) dSlopeEl.value = s.dSlope;
-      if('sSlope' in s) sSlopeEl.value = s.sSlope;
-      if('priceControl' in s) priceControlEl.value = s.priceControl;
-      if('pcMode' in s){
-        if(s.pcMode === 'ceiling') { pcCeil.checked = true; }
-        else if(s.pcMode === 'floor') { pcFloor.checked = true; }
-        else { pcNone.checked = true; }
+    function solveEquilibrium(state){
+      // state: {dIntercept, sIntercept, dSlope, sSlope}
+      const A_d = 80 + state.dIntercept*4;
+      const A_s = 20 + state.sIntercept*4;
+      const m_d = state.dSlope * 0.8;
+      const m_s = state.sSlope * 0.8;
+      let Q_eq = 50, P_eq = 50;
+      const denom = (m_d + m_s);
+      if(Math.abs(denom) < 1e-9){
+        Q_eq = 50;
+        P_eq = (A_d + A_s) / 2;
+      } else {
+        Q_eq = (A_d - A_s)/denom;
+        P_eq = A_s + m_s * Q_eq;
       }
-      draw();
+      Q_eq = clamp(Q_eq, Q_MIN, Q_MAX);
+      P_eq = clamp(P_eq, P_MIN, P_MAX);
+      return {P:P_eq, Q:Q_eq};
     }
 
+    // P as function of Q for a given state
+    function makePfunctions(state){
+      const A_d = 80 + state.dIntercept*4;
+      const A_s = 20 + state.sIntercept*4;
+      const m_d = state.dSlope * 0.8;
+      const m_s = state.sSlope * 0.8;
+      return {
+        P_d: (Q) => A_d - m_d * Q,
+        P_s: (Q) => A_s + m_s * Q,
+        invQd: (p) => (Math.abs(m_d) < 1e-9 ? (Math.abs(p - A_d)<1e-6 ? 50 : (p > A_d ? 0 : 100)) : (A_d - p)/m_d),
+        invQs: (p) => (Math.abs(m_s) < 1e-9 ? (Math.abs(p - A_s)<1e-6 ? 50 : (p < A_s ? 0 : 100)) : (p - A_s)/m_s)
+      };
+    }
+
+    // get state from sliders (student)
     function getState(){
       return {
         dIntercept: parseFloat(dInterceptEl.value),
@@ -211,34 +271,38 @@
       };
     }
 
+    function setState(state){
+      if('dIntercept' in state) dInterceptEl.value = state.dIntercept;
+      if('sIntercept' in state) sInterceptEl.value = state.sIntercept;
+      if('dSlope' in state) dSlopeEl.value = state.dSlope;
+      if('sSlope' in state) sSlopeEl.value = state.sSlope;
+      if('priceControl' in state) priceControlEl.value = state.priceControl;
+      if('pcMode' in state){
+        if(state.pcMode === 'ceiling') pcCeil.checked = true;
+        else if(state.pcMode === 'floor') pcFloor.checked = true;
+        else pcNone.checked = true;
+      }
+      draw();
+    }
+
     // ---- drawing ----
     function draw(){
+      // current (student) state
       const s = getState();
 
-      // P(Q) parameterization
-      const A_d = 80 + s.dIntercept*4;
-      const A_s = 20 + s.sIntercept*4;
-      const m_d = s.dSlope * 0.8;
-      const m_s = s.sSlope * 0.8;
+      // baseline functions (if scenarioActive, baselineState exists)
+      let baselineFns = null;
+      if(scenarioActive && baselineState){
+        baselineFns = makePfunctions(baselineState);
+      }
 
-      function P_d(Q){ return A_d - m_d * Q; }
-      function P_s(Q){ return A_s + m_s * Q; }
+      // student functions
+      const studentFns = makePfunctions(s);
 
       // equilibrium solve
-      let Q_eq, P_eq;
-      const denom = (m_d + m_s);
-      if(Math.abs(denom) < 1e-9){
-        Q_eq = 50;
-        P_eq = (P_d(50) + P_s(50))/2;
-      } else {
-        Q_eq = (A_d - A_s)/denom;
-        P_eq = P_s(Q_eq);
-      }
-      Q_eq = clamp(Q_eq, Q_MIN, Q_MAX);
-      P_eq = clamp(P_eq, P_MIN, P_MAX);
-
-      peqEl.textContent = P_eq.toFixed(2);
-      qeqEl.textContent = Q_eq.toFixed(2);
+      const studentEquil = solveEquilibrium(s);
+      peqEl.textContent = studentEquil.P.toFixed(2);
+      qeqEl.textContent = studentEquil.Q.toFixed(2);
 
       // canvas mapping
       const pad = 64;
@@ -249,32 +313,33 @@
 
       ctx.clearRect(0,0,canvas.width,canvas.height);
 
-      // axes & grid
-      ctx.strokeStyle = '#dfe6ef'; ctx.lineWidth = 1;
-      ctx.fillStyle = '#213547';
-      ctx.beginPath(); ctx.rect(pad-6, pad-6, w+12, h+12); ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.strokeStyle = '#e6e9ef';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(pad, pad+h); ctx.lineTo(pad+w, pad+h); ctx.moveTo(pad, pad); ctx.lineTo(pad, pad+h); ctx.stroke();
+      // axis panel background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(pad-6, pad-6, w+12, h+12);
 
-      ctx.font = '11px system-ui'; ctx.fillStyle = '#fff';
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      // grid lines and ticks
+      ctx.strokeStyle = '#e6e9ef'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad, pad+h); ctx.lineTo(pad+w, pad+h); ctx.moveTo(pad, pad); ctx.lineTo(pad, pad+h); ctx.stroke();
+      ctx.font = '11px system-ui'; ctx.fillStyle = '#213547';
+      ctx.strokeStyle = 'rgba(33,53,71,0.04)';
       for(let t=0;t<=5;t++){
         const q = t*20; const x = xFromQ(q);
-        ctx.beginPath(); ctx.moveTo(x, pad); ctx.lineTo(x, pad+h); ctx.strokeStyle='rgba(255,255,255,0.02)'; ctx.stroke();
-        ctx.fillStyle = '#bcd0e6'; ctx.fillText(q.toString(), x-8, pad+h+18);
+        ctx.beginPath(); ctx.moveTo(x, pad); ctx.lineTo(x, pad+h); ctx.stroke();
+        ctx.fillStyle = '#213547'; ctx.fillText(q.toString(), x-8, pad+h+18);
       }
       for(let t=0;t<=5;t++){
         const p = t*20; const y = yFromP(p);
-        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(pad+w, y); ctx.strokeStyle='rgba(255,255,255,0.02)'; ctx.stroke();
-        ctx.fillStyle = '#bcd0e6'; ctx.fillText(p.toString(), pad-36, y+4);
+        ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(pad+w, y); ctx.stroke();
+        ctx.fillStyle = '#213547'; ctx.fillText(p.toString(), pad-36, y+4);
       }
 
-      // curves (stop drawing when P outside view)
-      function plotCurveClipped(PofQ, color){
+      // helper to plot curve but optionally dashed/faint (for baseline)
+      function plotCurve(PofQ, color, dashed=false, alpha=1.0){
+        ctx.save();
         ctx.strokeStyle = color;
+        ctx.globalAlpha = alpha;
         ctx.lineWidth = 3;
+        if(dashed) ctx.setLineDash([6,6]);
         let drawing = false;
         ctx.beginPath();
         const steps = 300;
@@ -290,16 +355,23 @@
           }
         }
         ctx.stroke();
+        ctx.restore();
       }
 
-      // Demand red, Supply green
-      plotCurveClipped(P_d, '#ff6b6b');
-      plotCurveClipped(P_s, '#37b98a');
+      // draw baseline curves first (dashed faint)
+      if(baselineFns){
+        plotCurve(baselineFns.P_d, '#ffb7b7', true, 0.65); // demand baseline, light red dashed
+        plotCurve(baselineFns.P_s, '#bfeadf', true, 0.65); // supply baseline, light green dashed
+      }
 
-      // equilibrium dotted crosshair
-      const xe = xFromQ(Q_eq), ye = yFromP(P_eq);
+      // draw student curves (solid)
+      plotCurve(studentFns.P_d, '#ff6b6b', false, 1.0);
+      plotCurve(studentFns.P_s, '#37b98a', false, 1.0);
+
+      // equilibrium dotted crosshair for student curve
+      const xe = xFromQ(studentEquil.Q), ye = yFromP(studentEquil.P);
       ctx.setLineDash([6,6]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(33,53,71,0.14)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(pad, ye); ctx.lineTo(xe, ye); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(xe, pad+h); ctx.lineTo(xe, ye); ctx.stroke();
       ctx.setLineDash([]);
@@ -309,7 +381,7 @@
       ctx.beginPath(); ctx.arc(xe, ye, 5, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = '12px system-ui'; ctx.fillText('E', xe+8, ye-8);
 
-      // price control logic (only meaningful when radio selected)
+      // price control logic
       const mode = pcCeil.checked ? 'ceiling' : (pcFloor.checked ? 'floor' : 'none');
       const pc = parseFloat(priceControlEl.value);
       pcValEl.textContent = (mode === 'none') ? '—' : pc.toFixed(0);
@@ -321,18 +393,11 @@
         ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(pad, ypc); ctx.lineTo(pad+w, ypc); ctx.stroke();
         ctx.setLineDash([]);
 
-        // invert functions to get quantities at price pc
-        function QdAtPrice(p){
-          if(Math.abs(m_d) < 1e-9){ return (Math.abs(p - A_d) < 1e-6) ? 50 : (p > A_d ? 0 : 100); }
-          return (A_d - p) / m_d;
-        }
-        function QsAtPrice(p){
-          if(Math.abs(m_s) < 1e-9){ return (Math.abs(p - A_s) < 1e-6) ? 50 : (p < A_s ? 0 : 100); }
-          return (p - A_s) / m_s;
-        }
-
-        let Qd = clamp(QdAtPrice(pc), Q_MIN, Q_MAX);
-        let Qs = clamp(QsAtPrice(pc), Q_MIN, Q_MAX);
+        // quantities at price pc for student curves
+        let QdAtPc = studentFns.invQd(pc);
+        let QsAtPc = studentFns.invQs(pc);
+        QdAtPc = clamp(QdAtPc, Q_MIN, Q_MAX);
+        QsAtPc = clamp(QsAtPc, Q_MIN, Q_MAX);
 
         // mark Qd, Qs
         function markPoint(Q, p, color, label){
@@ -341,24 +406,25 @@
           ctx.fillStyle = color; ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fill();
           ctx.fillStyle = '#fff'; ctx.font='12px system-ui'; ctx.fillText(label, x+8, y-8);
         }
-        markPoint(Qd, pc, '#ff6b6b', 'QD');
-        markPoint(Qs, pc, '#37b98a', 'QS');
+        markPoint(QdAtPc, pc, '#ff6b6b', 'QD');
+        markPoint(QsAtPc, pc, '#37b98a', 'QS');
 
-        // binding & explanation
         if(mode === 'ceiling'){
-          const binding = pc < P_eq;
+          const binding = pc < studentEquil.P;
           if(binding){
-            const shortage = Math.max(0, Qd - Qs);
-            pcNoteEl.textContent = `Binding ceiling (P=${pc.toFixed(0)}): shortage ≈ ${shortage.toFixed(2)} (QD - QS at price).`;
-            ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.moveTo(xFromQ(Qs), ypc+12); ctx.lineTo(xFromQ(Qd), ypc+12); ctx.stroke();
-          } else { pcNoteEl.textContent = 'Non-binding ceiling: market stays at equilibrium.'; }
+            const shortage = Math.max(0, QdAtPc - QsAtPc);
+            pcNoteEl.textContent = `Binding ceiling (P=${pc.toFixed(0)}): shortage ≈ ${shortage.toFixed(2)} (QD - QS at the controlled price).`;
+          } else {
+            pcNoteEl.textContent = 'Non-binding ceiling: market stays at equilibrium.';
+          }
         } else {
-          const binding = pc > P_eq;
+          const binding = pc > studentEquil.P;
           if(binding){
-            const surplus = Math.max(0, Qs - Qd);
-            pcNoteEl.textContent = `Binding floor (P=${pc.toFixed(0)}): surplus ≈ ${surplus.toFixed(2)} (QS - QD at price).`;
-            ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.moveTo(xFromQ(Qd), ypc+12); ctx.lineTo(xFromQ(Qs), ypc+12); ctx.stroke();
-          } else { pcNoteEl.textContent = 'Non-binding floor: market stays at equilibrium.'; }
+            const surplus = Math.max(0, QsAtPc - QdAtPc);
+            pcNoteEl.textContent = `Binding floor (P=${pc.toFixed(0)}): surplus ≈ ${surplus.toFixed(2)} (QS - QD at the controlled price).`;
+          } else {
+            pcNoteEl.textContent = 'Non-binding floor: market stays at equilibrium.';
+          }
         }
       } else {
         pcNoteEl.textContent = 'No price control line selected.';
@@ -391,16 +457,70 @@
       requestAnimationFrame(frame);
     }
 
-    // ---- scenarios ----
+    // ---- scenario lifecycle ----
     function showScenarioBox(show){
       scenarioBox.style.display = show ? 'block' : 'none';
     }
 
-    function loadScenarioByKey(key){
+    function startScenario(key){
       const sc = SCENARIOS[key];
       if(!sc) return;
-      setState(sc.values);
-      // keep Scenario Mode on but unlock free play if user wants
+      activeScenarioKey = key;
+      scenarioActive = true;
+      // set baseline to scenario's values and snapshot baseline equilibrium
+      baselineState = Object.assign({}, sc.values);
+      baselineEquil = solveEquilibrium(baselineState);
+      // place student's sliders initially at baseline (they move the student curve)
+      setState(Object.assign({}, baselineState));
+      feedbackEl.style.display = 'none';
+      draw();
+      document.getElementById('scenarioHint').textContent = sc.name + ' — ' + sc.desc;
+    }
+
+    function resetToScenarioDefaults(){
+      if(!scenarioActive || !baselineState) return;
+      setState(baselineState);
+      feedbackEl.style.display = 'none';
+    }
+
+    function exitScenario(){
+      scenarioActive = false;
+      activeScenarioKey = null;
+      baselineState = null;
+      baselineEquil = null;
+      feedbackEl.style.display = 'none';
+      // return to defaults (free play) but keep current sliders as they are
+      setState(DEFAULTS);
+    }
+
+    function checkAnswer(){
+      if(!scenarioActive || !activeScenarioKey){ feedbackEl.style.display = 'block'; feedbackEl.className='feedback'; feedbackEl.textContent = 'Start a scenario to check an answer.'; return; }
+      const sc = SCENARIOS[activeScenarioKey];
+      const baseline = baselineEquil || solveEquilibrium(baselineState);
+      const studentState = getState();
+      const studentEquil = solveEquilibrium(studentState);
+
+      // for price control scenarios we need Qd/Qs at pc for student's curves
+      const studentFns = makePfunctions(studentState);
+      const pc = studentState.priceControl;
+      const studentQdAtPc = clamp(studentFns.invQd(pc), Q_MIN, Q_MAX);
+      const studentQsAtPc = clamp(studentFns.invQs(pc), Q_MIN, Q_MAX);
+
+      let result;
+      try{
+        result = sc.check(baseline, studentEquil, pc, studentQsAtPc, studentQdAtPc);
+      }catch(e){
+        result = { pass: false, hint: 'Scenario check not configured.'};
+      }
+
+      feedbackEl.style.display = 'block';
+      if(result.pass){
+        feedbackEl.className = 'feedback pass';
+        feedbackEl.textContent = 'Nice! PASS — ' + (result.hint || 'Good job.');
+      } else {
+        feedbackEl.className = 'feedback';
+        feedbackEl.textContent = 'Not quite — ' + (result.hint || 'Try adjusting sliders to better satisfy the scenario.');
+      }
     }
 
     // ---- events ----
@@ -408,44 +528,34 @@
       el.addEventListener('input', draw);
       el.addEventListener('change', draw);
     });
-    [pcNone, pcCeil, pcFloor].forEach(el=>{
-      el.addEventListener('change', draw);
-    });
+    [pcNone, pcCeil, pcFloor].forEach(el=>{ el.addEventListener('change', draw); });
 
     resetBtn.addEventListener('click', ()=>{ animateReset(); });
 
-    scenarioToggle.addEventListener('change', (e)=>{
-      showScenarioBox(e.target.checked);
-    });
+    scenarioToggle.addEventListener('change', (e)=>{ showScenarioBox(e.target.checked); });
 
-    loadScenario.addEventListener('click', ()=>{
+    startScenarioBtn.addEventListener('click', ()=>{
       const key = scenarioSelect.value;
-      loadScenarioByKey(key);
-      // show a short hint about the scenario
-      const sc = SCENARIOS[key];
-      document.getElementById('scenarioHint').textContent = sc.name + ' — ' + sc.desc;
+      startScenario(key);
     });
 
-    unlockPlay.addEventListener('click', ()=>{
-      // return to defaults for free play but keep sliders as is (gives student freedom)
-      setState(DEFAULTS);
+    resetToScenarioBtn.addEventListener('click', (e)=>{
+      resetToScenarioDefaults();
     });
 
-    centerSliders.addEventListener('click', ()=>{
-      // snap only sliders (not PC) back to defaults
-      const cur = getState();
-      cur.dIntercept = DEFAULTS.dIntercept;
-      cur.sIntercept = DEFAULTS.sIntercept;
-      cur.dSlope = DEFAULTS.dSlope;
-      cur.sSlope = DEFAULTS.sSlope;
-      setState(cur);
+    exitScenarioBtn.addEventListener('click', (e)=>{
+      exitScenario();
+    });
+
+    checkAnswerBtn.addEventListener('click', (e)=>{
+      checkAnswer();
     });
 
     // initialize
     setState(DEFAULTS);
     draw();
 
-    // ensure canvas pixel dimensions match style size (avoid HiDPI mis-scaling)
+    // ensure canvas pixels match layout size (avoid HiDPI mis-scaling)
     (function fixCanvasSize(){
       const styleW = canvas.clientWidth || 840;
       const styleH = canvas.clientHeight || 520;
@@ -454,7 +564,6 @@
       draw();
     })();
 
-    // redraw on window resize (keeps layout consistent)
     window.addEventListener('resize', ()=>{
       const styleW = canvas.clientWidth || 840;
       const styleH = canvas.clientHeight || 520;
